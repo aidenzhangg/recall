@@ -31,4 +31,4 @@ Recall currently has no webcam capture or focus monitoring. Notes and quiz answe
 For the planned focus companion, the goal is opt-in camera access, on-device video processing, and no recording or uploading of webcam footage. You should be able to pause or stop monitoring at any time. These are design commitments for the future feature, not claims about an existing implementation.
 
 ## References
-https://wabtech.gumroad.com/l/aspira
+https://wabtech.gumroad.com/l/aspira - template (used as reference)
