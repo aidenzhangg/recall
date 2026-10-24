@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Recall",
   "version": "0.1.0",
-  "description": "Practice from past papers with exam-style questions, hints, grading and video help.",
+  "description": "Study your course notes with practice quizzes, guided hints, and a focused tutor workspace.",
   "permissions": ["sidePanel", "activeTab", "scripting"],
   "action": { "default_title": "Open Recall" },
   "side_panel": { "default_path": "index.html" },
