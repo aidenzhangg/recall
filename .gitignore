@@ -1,0 +1,5 @@
+
+/learn/
+
+# Recall account storage if the backend is started from the project root
+/data/
