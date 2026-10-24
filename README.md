@@ -29,3 +29,6 @@ This would be an estimate, not proof of attention or understanding. Webcam monit
 Recall currently has no webcam capture or focus monitoring. Notes and quiz answers stay in the current browser session and are not sent by the hint feature. Asking for a hint sends the selected question and your message to the backend and, when AI is configured, OpenAI. Avoid including sensitive information in those messages.
 
 For the planned focus companion, the goal is opt-in camera access, on-device video processing, and no recording or uploading of webcam footage. You should be able to pause or stop monitoring at any time. These are design commitments for the future feature, not claims about an existing implementation.
+
+## References
+https://wabtech.gumroad.com/l/aspira
