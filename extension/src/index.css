@@ -4,30 +4,73 @@
 @import '@fontsource/outfit/500.css';
 @import '@fontsource/outfit/600.css';
 
+
 :root {
   --font-display: 'Poppins', 'Segoe UI', sans-serif;
   --font-body: 'Outfit', 'Segoe UI', sans-serif;
-  --canvas: #0e0b16;
-  --surface: #1d2735;
-  --raised: #303b4c;
-  --ink: #f2f3f8;
-  --muted: #a9afbd;
-  --accent: #bd85f4;
-  --action: #962ee6;
-  --action-hover: #aa43f2;
-  --purple-surface: #302344;
-  --rule: #8290aa35;
-  --rule-hover: #8290aa65;
+  --canvas: #151c20;
+  --surface: #1d282d;
+  --raised: #29383d;
+  --input: #243238;
+  --ink: #eceeeb;
+  --muted: #a7b8b7;
+  --accent: #68b8ad;
+  --action: #68b8ad;
+  --action-hover: #83c8be;
+  --action-text: #122624;
+  --accent-surface: #243d3b;
+  --rule: #9cbab52b;
+  --rule-hover: #9cbab560;
+  --panel-border: #9cbab52b;
+  --nav-bg: #172d2c;
+  --nav-active: #2b4c48;
+  --nav-border: #87aaa530;
+  --nav-text: #d5e4df;
+  --nav-rule: #87aaa540;
+  --background: #151c20;
+  --assistant-bg: #243d3b;
+  --assistant-text: #eceeeb;
+  --assistant-label: #9dd5cb;
+  --secondary-text: #a8d8cf;
+  --secondary-hover: #30504b;
+  --page-copy: #b5c5c2;
+  --field-bg: #1a252a;
   --danger: #efb0a9;
   color-scheme: dark;
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.6;
   color: var(--ink);
-  background: var(--canvas);
+  background: var(--background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+:root[data-theme='light'] {
+  --canvas: #f1f5f2;
+  --surface: #fafcf9;
+  --raised: #e1ebe6;
+  --input: #edf3ef;
+  --ink: #1d302e;
+  --muted: #536a65;
+  --accent: #286c63;
+  --action: #286c63;
+  --action-hover: #205b53;
+  --action-text: #f4f8f4;
+  --accent-surface: #dfede7;
+  --rule: #456e622b;
+  --rule-hover: #456e6260;
+  --panel-border: #456e622b;
+  --background: #f1f5f2;
+  --assistant-bg: #dfede7;
+  --assistant-text: #1d302e;
+  --assistant-label: #286c63;
+  --secondary-text: #286459;
+  --secondary-hover: #d1e4db;
+  --page-copy: #536a65;
+  --field-bg: #f7faf6;
+  --danger: #a32e42;
+  color-scheme: light;
 }
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; min-width: 280px; }
@@ -36,71 +79,5 @@ button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 button, textarea, input, select { transition: background-color 160ms, border-color 160ms, color 160ms; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-::selection { background: #bd85f440; }
+::selection { background: #68b8ad40; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
-
-:root {
-  --canvas: #141327;
-  --surface: #202338;
-  --raised: #363850;
-  --input: #34364f;
-  --panel-border: #858cab38;
-  --nav-bg: #241342;
-  --nav-active: #443080;
-  --purple-surface: #32205b;
-  --accent: #cfadff;
-  --action: #8730db;
-  --action-hover: #9942e9;
-  --action-text: #fbf7ff;
-  --background: linear-gradient(125deg, #121626 0%, #22113b 55%, #360951 100%);
-  --assistant-bg: linear-gradient(110deg, #8b2be2, #5040d4);
-  --assistant-text: #fbf7ff;
-  --assistant-label: #f1dfff;
-  --secondary-text: #ddc6ff;
-  --secondary-hover: #432c70;
-  --page-copy: #c3c7d1;
-  --field-bg: #1c2433;
-  --nav-border: #5e397c30;
-  --nav-text: #e6d7fa;
-  --nav-rule: #77539455;
-  background: var(--background);
-  background-attachment: fixed;
-}
-:root[data-theme='light'] {
-  --canvas: #f5f3fb;
-  --surface: #ffffff;
-  --raised: #ece8f6;
-  --input: #f5f2fb;
-  --ink: #252039;
-  --muted: #686179;
-  --rule: #76638c2b;
-  --rule-hover: #76638c70;
-  --panel-border: #76638c2b;
-  --accent: #7139b0;
-  --action: #7930cb;
-  --action-hover: #6823b5;
-  --action-text: #fbf7ff;
-  --purple-surface: #eee4fb;
-  --nav-bg: #eae0f6;
-  --nav-active: #d8c5f2;
-  --nav-border: #c4addf60;
-  --nav-text: #382151;
-  --nav-rule: #b69ccf60;
-  --background: linear-gradient(125deg, #f8f8fc 0%, #f2ecfa 60%, #eadcf8 100%);
-  --assistant-bg: linear-gradient(110deg, #7930cb, #5143c7);
-  --secondary-text: #62319a;
-  --secondary-hover: #e3d2f6;
-  --page-copy: #625a72;
-  --field-bg: #f8f6fc;
-  --danger: #ad3652;
-  color-scheme: light;
-}
-
-/* The reference keeps its purple learning sidebar in both appearances. */
-:root[data-theme='light'] {
-  --nav-bg: #34115a;
-  --nav-active: #503084;
-  --nav-text: #f0e7fc;
-  --nav-border: #7a4aaa40;
-  --nav-rule: #ad83d040;
-}
