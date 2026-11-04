@@ -36,3 +36,12 @@ For the planned focus companion, the goal is opt-in camera access, on-device vid
 UI Design Inspiration: https://wabtech.gumroad.com/l/aspir
 
 The application's visual design was inspired by Aspira. The UI was independently designed and implemented, with custom components, layouts, and styling adapted to the project's needs. All frontend functionality, backend services, and application logic were developed independently.
+
+## Automated checks
+
+The workflow in `.github/workflows/ci.yml` runs on pushes and pull requests, and can be started manually from GitHub's Actions tab.
+
+- Frontend: Node.js 24, `npm ci`, ESLint, TypeScript checks and the Vite production build.
+- Backend: Java 21 and the Maven wrapper's `verify` lifecycle, including tests and packaging.
+
+No API key or deployment credentials are required. These checks do not deploy the app. A local commit triggers GitHub checks only after it is pushed. To prevent merging a failing pull request, configure a GitHub branch ruleset requiring both CI job checks.
