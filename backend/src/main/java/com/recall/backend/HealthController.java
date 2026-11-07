@@ -13,7 +13,8 @@ public class HealthController {
 	// Lets the extension check that the server is running
 	@GetMapping("/health")
 	public Map<String, String> health() {
-		return Map.of("status", "ok");
+		return Map.of("status", "ok", "service", "recall");
+		
 	}
 
 }
