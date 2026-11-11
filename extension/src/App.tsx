@@ -116,6 +116,11 @@ function App() {
     applyProgress({ version: 1, notes: '', noteName: 'Pasted notes', count: 5, hintsOn: true, questions: [], answers: [], submitted: false, questionIndex: 0, studyDays: [] })
     setSyncStatus('Signed out')
   }
+  function editNotes(text: string) {
+    generationId.current++; setGenerating(false)
+    setNotes(text); setNoteName('Pasted notes'); setImportReport(null)
+    setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0); setQuizOrigin('')
+  }
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
@@ -188,7 +193,7 @@ function App() {
       <div className="page-heading"><h2 id="notes-title">Notes</h2></div>
       <div className="material-panel"><div className="material-heading"><NavIcon name="Notes" /><div><strong>{words ? noteName : 'Add course notes'}</strong><p>Notes or past paper / TXT, MD, PDF / 20 MB</p></div></div><input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} /><button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Importing...' : words ? 'Replace material' : 'Import material'}</button></div>
       {importReport && importReport.name === noteName && <div className="import-report" role="status"><p>{importReport.pages ? `${importReport.pages} pages processed / ` : ''}{words.toLocaleString()} words extracted. Review the text below.</p>{importReport.warnings.length > 0 && <details open><summary>Some PDF content may be missing</summary><ul>{importReport.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details>}</div>}
-      <div className="editor"><div className="field-heading"><label htmlFor="notes">Paste or edit notes</label><span>{words} words</span></div><textarea id="notes" maxLength={200000} value={notes} onChange={e => { setNotes(e.target.value); setNoteName('Pasted notes') }} placeholder="Paste definitions, notes, or a topic you want to review" /></div>
+      <div className="editor"><div className="field-heading"><label htmlFor="notes">Paste or edit notes</label><span>{words} words</span></div><textarea id="notes" maxLength={200000} value={notes} onChange={e => editNotes(e.target.value)} placeholder="Paste definitions, notes, or a topic you want to review" /></div>
       <button className="primary" disabled={!notes.trim() || importing} onClick={() => navigate('Practice')}>Set up practice </button>
     </section>}
     {tab === 'Practice' && <section className="content" aria-labelledby="practice-title">

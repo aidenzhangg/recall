@@ -108,3 +108,16 @@ test('ECE course labels cannot become quiz subjects or distractors', () => {
  assert.ok(questions.flatMap(q=>q.options ?? []).every(option=>['Variables','Functions'].includes(option)))
  assert.deepEqual(makeQuestions('ECE150 Fundamentals of Programming is a first year engineering course.',5,'blank'),[])
 })
+
+test('unseen course codes and arbitrary headings are excluded without department lists', () => {
+ for (const header of ['ASTR 241 Exploring distant stars', 'HIST290A Ancient civilizations and societies', 'ABCD-732 Some unfamiliar course title', 'Topics from this week', '# A heading with unrelated information']) {
+  const questions = makeQuestions(`${header}\nGravity is the attraction between objects with mass.\nDNA contains instructions for the development of organisms.`,10,'choice')
+  assert.deepEqual(questions.map(q=>q.answer),['Gravity','DNA'],header)
+  assert.ok(questions.every(q=>!q.source.includes(header)),header)
+ }
+ assert.deepEqual(makeQuestions('ASTR241 Exploring distant stars is a first semester course.',5,'blank'),[])
+})
+test('numbered technical concepts remain usable when they explain actual facts', () => {
+ const facts = 'ISO9001 describes requirements for quality management systems. HTTP404 means the requested resource was not found.'
+ assert.deepEqual(makeQuestions(facts,5,'blank').map(q=>q.answer),['HTTP404','ISO9001'])
+})

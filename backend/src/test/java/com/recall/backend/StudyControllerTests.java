@@ -70,4 +70,14 @@ class StudyControllerTests {
         });
         assertThat(StudyController.generateAt(new StudyController.Generation("ECE150 Fundamentals of Programming is a first year engineering course.", 5, "blank", List.of()), 1000)).isEmpty();
     }
+
+    @Test void generalizesToUnseenHeadersWithoutDroppingNumberedTechnicalConcepts() {
+        for (String header : List.of("ASTR 241 Exploring distant stars", "HIST290A Ancient civilizations and societies", "ABCD-732 Some unfamiliar course title", "Topics from this week", "# A heading with unrelated information")) {
+            var questions = StudyController.generateAt(new StudyController.Generation(header + "\nGravity is the attraction between objects with mass.\nDNA contains instructions for the development of organisms.", 10, "choice", List.of()), 1000);
+            assertThat(questions).as(header).extracting(StudyController.Question::answer).containsExactly("Gravity", "DNA");
+        }
+        assertThat(StudyController.generateAt(new StudyController.Generation("ASTR241 Exploring distant stars is a first semester course.", 5, "blank", List.of()), 1000)).isEmpty();
+        var technical = StudyController.generateAt(new StudyController.Generation("ISO9001 describes requirements for quality management systems. HTTP404 means the requested resource was not found.", 5, "blank", List.of()), 1000);
+        assertThat(technical).extracting(StudyController.Question::answer).containsExactly("HTTP404", "ISO9001");
+    }
 }
