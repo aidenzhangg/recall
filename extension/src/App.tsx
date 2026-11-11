@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import { checkHealth, requestQuiz, extractPdf } from './api'
+import { checkHealth, requestQuiz, extractPdfDocument } from './api'
 import HintCoach from './HintCoach'
 import FocusTimer from './FocusTimer'
 import Profile from './Profile'
@@ -29,6 +29,7 @@ function App() {
     setStudyDays(previous => previous.includes(today) ? previous : [...previous, today].sort().slice(-366))
   }, [])
   const [importing, setImporting] = useState(false)
+  const [importReport, setImportReport] = useState<{ name: string; pages: number; warnings: string[] } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [tab, setTab] = useState<Tab>('Dashboard')
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -123,9 +124,14 @@ function App() {
     if (!/\.(txt|md|pdf)$/i.test(file.name)) { setError('Choose a .txt, .md or text-based PDF file.'); return }
     setImporting(true)
     try {
-      const text = /\.pdf$/i.test(file.name) ? await extractPdf(file) : await file.text()
+      const pdf = /\.pdf$/i.test(file.name) ? await extractPdfDocument(file) : null
+      const text = pdf ? pdf.text : await file.text()
       if (text.length > 200000) { setError('Use material under 200,000 characters.'); return }
+      if (!text.trim()) { setError('No readable text found in this file.'); return }
+      generationId.current++; setGenerating(false)
+      setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0); setReview([]); setQuizOrigin('')
       setNotes(text); setNoteName(file.name)
+      setImportReport(pdf ? { name: file.name, pages: pdf.pageCount, warnings: pdf.warnings } : null)
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not import the file.') }
     finally { setImporting(false) }
   }
@@ -180,6 +186,7 @@ function App() {
     {tab === 'Notes' && <section className="content" aria-labelledby="notes-title">
       <div className="page-heading"><h2 id="notes-title">Notes</h2></div>
       <div className="material-panel"><div className="material-heading"><NavIcon name="Notes" /><div><strong>{words ? noteName : 'Add course notes'}</strong><p>Notes or past paper / TXT, MD, PDF / 20 MB</p></div></div><input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} /><button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Importing...' : words ? 'Replace material' : 'Import material'}</button></div>
+      {importReport && importReport.name === noteName && <div className="import-report" role="status"><p>{importReport.pages ? `${importReport.pages} pages processed / ` : ''}{words.toLocaleString()} words extracted. Review the text below.</p>{importReport.warnings.length > 0 && <details open><summary>Some PDF content may be missing</summary><ul>{importReport.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details>}</div>}
       <div className="editor"><div className="field-heading"><label htmlFor="notes">Paste or edit notes</label><span>{words} words</span></div><textarea id="notes" maxLength={200000} value={notes} onChange={e => { setNotes(e.target.value); setNoteName('Pasted notes') }} placeholder="Paste definitions, notes, or a topic you want to review" /></div>
       <button className="primary" disabled={!notes.trim() || importing} onClick={() => navigate('Practice')}>Set up practice </button>
     </section>}

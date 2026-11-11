@@ -21,4 +21,14 @@ class StudyControllerTests {
         assertThat(StudyController.generateAt(new StudyController.Generation(notes, 1, "blank", List.of(future)), 1000).getFirst().source()).isEqualTo(baseline.getFirst().source());
         assertThat(StudyController.generateAt(new StudyController.Generation("", 5, "choice", List.of()), 1000)).isEmpty();
     }
+
+    @Test void wrappedPdfBodyIsUsedInsteadOfItsTitleAndLaterPagesAreCovered() {
+        String pdf = "Introduction To The Biology Of Plants\n\nPhotosynthesis converts\nsunlight into stored\nchemical energy.\n\nPage 1\n\nMitochondria release\nenergy through cellular\nrespiration.\n\nChlorophyll absorbs light\ninside living plant cells.";
+        var questions = StudyController.generateAt(new StudyController.Generation(pdf, 2, "blank", List.of()), 1000);
+        assertThat(questions).hasSize(2);
+        assertThat(questions.getFirst().source()).isEqualTo("Photosynthesis converts sunlight into stored chemical energy.");
+        assertThat(questions.getLast().source()).contains("Chlorophyll");
+        assertThat(questions).noneSatisfy(q -> assertThat(q.source()).contains("Introduction", "Page 1"));
+        assertThat(StudyPassages.split("Photo-\nsynthesis converts light into chemical energy.")).containsExactly("Photosynthesis converts light into chemical energy.");
+    }
 }

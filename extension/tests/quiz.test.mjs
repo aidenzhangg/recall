@@ -35,3 +35,13 @@ test('history from a different document never becomes a question', () => {
  assert.ok(!adaptiveQuestions(notes,3,'blank',history,1000).some(q=>q.source===history[0].source))
  assert.deepEqual(makeQuestions('',5,'choice'),[])
 })
+
+test('PDF line wrapping keeps body sentences and skips a title and page numbers', () => {
+ const pdf = 'Introduction To The Biology Of Plants\n\nPhotosynthesis converts\nsunlight into stored\nchemical energy.\n\nPage 1\n\nMitochondria release\nenergy through cellular\nrespiration.\n\nChlorophyll absorbs light\ninside living plant cells.'
+ const questions = makeQuestions(pdf, 2, 'blank')
+ assert.equal(questions[0].source, 'Photosynthesis converts sunlight into stored chemical energy.')
+ assert.ok(questions[1].source.includes('Chlorophyll'))
+ assert.ok(questions.every(q => !q.source.includes('Introduction') && !q.source.includes('Page 1')))
+ const broken = makeQuestions('Photo-\nsynthesis converts light into chemical energy.',1,'blank')
+ assert.equal(broken[0].source,'Photosynthesis converts light into chemical energy.')
+})

@@ -22,13 +22,18 @@ public class StudyController {
         for (var item : request.history()) {
             priorities.put(item.source(), item.dueAt() <= now ? 10L + item.misses() - item.successes() : 0L);
         }
-        var sources = new ArrayList<>(Arrays.stream(request.notes().split("(?<=[.!?])\\s+|\\n+"))
-            .map(String::trim).filter(line -> line.split("\\s+").length >= 5).toList());
+        var sources = new ArrayList<>(StudyPassages.split(request.notes()));
         sources.sort(Comparator.comparingLong((String source) -> priorities.getOrDefault(source, 0L)).reversed());
         var pool = new LinkedHashMap<String,String>();
         WORD.matcher(request.notes()).results().forEach(m -> pool.putIfAbsent(m.group().toLowerCase(Locale.ROOT), m.group()));
         var questions = new ArrayList<Question>();
-        for (String source : sources) {
+        boolean hasDue = sources.stream().anyMatch(source -> priorities.getOrDefault(source, 0L) > 0);
+        List<String> selected = sources;
+        if (!hasDue && sources.size() > request.count()) {
+            selected = new ArrayList<>();
+            for (int i = 0; i < request.count(); i++) selected.add(sources.get((int) Math.floor(i * (sources.size() - 1.0) / Math.max(1, request.count() - 1))));
+        }
+        for (String source : selected) {
             if (questions.size() >= request.count()) break;
             String term = WORD.matcher(source).results().map(m -> m.group()).max(Comparator.comparingInt(String::length)).orElse(null);
             if (term == null) continue;

@@ -36,7 +36,8 @@ export async function requestQuiz(notes: string, count: number, format: QuizForm
   return data
 }
 
-export async function extractPdf(file: File): Promise<string> {
+export type PdfImport = { text: string; pageCount: number; pages: { number: number; words: number }[]; warnings: string[] }
+export async function extractPdfDocument(file: File): Promise<PdfImport> {
   const body = new FormData(); body.append('file', file)
   let response: Response
   try {
@@ -49,5 +50,13 @@ export async function extractPdf(file: File): Promise<string> {
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(typeof data.message === 'string' ? data.message : 'PDF import failed. Start the backend and try a text-based PDF up to 20 MB.')
   if (typeof data.text !== 'string' || data.text.length > 200000) throw new Error('Invalid extracted text')
-  return data.text
+  return {
+    text: data.text,
+    pageCount: Number.isInteger(data.pageCount) && data.pageCount > 0 ? data.pageCount : 0,
+    pages: Array.isArray(data.pages) ? data.pages.filter((page: { number?: unknown; words?: unknown }) => Number.isInteger(page?.number) && Number.isInteger(page?.words)) : [],
+    warnings: Array.isArray(data.warnings) ? data.warnings.filter((warning: unknown) => typeof warning === 'string') : [],
+  }
+}
+export async function extractPdf(file: File): Promise<string> {
+  return (await extractPdfDocument(file)).text
 }

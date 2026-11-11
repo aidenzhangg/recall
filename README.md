@@ -4,8 +4,8 @@ A Chrome side-panel workspace for studying your own notes and course materials. 
 
 ## What works
 
-- Import TXT/Markdown or selectable-text PDFs, including past papers. PDF extraction uses the Java backend; scanned PDFs need OCR and are not supported yet.
-- Create fill-in-the-blank, multiple-choice, long-answer or mixed practice. The Spring Boot endpoint prioritizes previously missed material; the extension has a local fallback.
+- Import TXT/Markdown or selectable-text PDFs, including past papers. PDF extraction uses the Java backend, orders text by page position and reports page/word counts and missing-text warnings. Scanned PDFs need OCR and are not supported yet.
+- Create fill-in-the-blank, multiple-choice, long-answer or mixed practice. Wrapped PDF body lines are joined before question generation, title-like headings and page numbers are skipped, and new quizzes sample across the document. The Spring Boot endpoint prioritizes previously missed material; the extension has a local fallback.
 - Track misses and successful attempts per source passage, schedule later review after correct responses, retry answers and save history with account progress. This is a rule-based review scheduler, not a trained adaptive ML model.
 - Block distracting domains and their subdomains from **Block sites**. The on/off control and domain list stay on this browser profile; blocking uses Chrome rules without recording browsing history. Existing pages are not closed.
 - Use flashcards, a deadline-based focus timer, and built-in study hints. Long answers are explicitly self-reviewed.

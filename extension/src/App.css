@@ -326,3 +326,7 @@ textarea, select, .question input { font-size: 14px; }
 .blocker-help summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
 .blocker-help p { line-height: 1.65; }
 @media (prefers-reduced-motion: reduce) { .blocking-switch input::before { transition: none; } }
+
+.import-report { grid-column: 1 / -1; display: grid; gap: 10px; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.import-report summary { color: var(--danger); cursor: pointer; min-height: 44px; padding-block: 10px; }
+.import-report ul { padding-left: 18px; display: grid; gap: 8px; }
