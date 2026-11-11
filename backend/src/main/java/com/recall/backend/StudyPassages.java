@@ -12,12 +12,12 @@ final class StudyPassages {
         var current = new StringBuilder();
         for (String raw : normalized.split("\n", -1)) {
             String line = raw.trim().replaceAll("^[\u2022\u25cf\u25aa]\\s*", "");
-            boolean heading = isHeading(line);
+            boolean heading = isHeading(line) || line.matches("^#{1,6}\\s+.*") || line.matches("^(?:---+|===+|___+)$");
             if (line.isBlank() || isLogistics(line) || heading || line.matches("(?:Page\\s+)?[0-9]+(?:\\s+(?:of|/)\\s+[0-9]+)?")) {
                 if (!current.isEmpty()) { paragraphs.add(current.toString()); current.setLength(0); }
                 continue;
             }
-            if (raw.trim().matches("^[\u2022\u25cf\u25aa].*") && !current.isEmpty()) {
+            if ((raw.trim().matches("^[\u2022\u25cf\u25aa].*") || StudyContent.startsFact(line)) && !current.isEmpty()) {
                 paragraphs.add(current.toString()); current.setLength(0);
             }
             if (!current.isEmpty()) current.append(' ');
@@ -32,7 +32,8 @@ final class StudyPassages {
         return new ArrayList<>(result);
     }
     static boolean isLogistics(String line) {
-        return line.matches("(?i)^(?:the |an? )?(?:assignment|assessment|exam|midterm|final exam|grading|marks|syllabus|schedule)\\b.*(?:due|worth|percent|%|scheduled|held|room|submit|grade|deadline).*" )
+        return line.matches("(?i)^(?:title|topic|section|unit|lecture(?:\\s+[0-9]+)?|chapter(?:\\s+[0-9]+)?)\\s*:.*")
+            || line.matches("(?i)^(?:the |an? )?(?:assignment|assessment|exam|midterm|final exam|grading|marks|syllabus|schedule)\\b.*(?:due|worth|percent|%|scheduled|held|room|submit|grade|deadline).*" )
             || line.matches("(?i).*(?:office hours|all rights reserved|copyright|contact (?:me|us|the instructor)|assignment (?:deadline|due)|submission deadline|course (?:code|outline|syllabus)|lecture slides (?:are|will)|slides (?:are|will be) (?:available|posted)|download (?:the|these) slides|next lecture (?:is|will)|attendance (?:is|will)|email (?:me|the instructor)|please (?:submit|upload|bring)|due (?:date|on)|instructor:|professor:|lecturer:).*" )
             || line.matches("(?i)^(?:https?://|www\\.).*") || line.matches(".*[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}.*");
     }

@@ -1,7 +1,11 @@
 export type QuizFormat = 'blank' | 'choice' | 'long' | 'mixed'
 export type Question = { prompt: string; answer: string; kind?: Exclude<QuizFormat, 'mixed'>; options?: string[]; source?: string; topic?: string }
 const logistics = /office hours|all rights reserved|copyright|contact (?:me|us|the instructor)|assignment (?:deadline|due)|submission deadline|course (?:code|outline|syllabus)|lecture slides (?:are|will)|slides (?:are|will be) (?:available|posted)|download (?:the|these) slides|next lecture (?:is|will)|attendance (?:is|will)|email (?:me|the instructor)|please (?:submit|upload|bring)|due (?:date|on)|instructor:|professor:|lecturer:/i
-function isLogistics(line: string) { return /^(?:the |an? )?(?:assignment|assessment|exam|midterm|final exam|grading|marks|syllabus|schedule)\b.*(?:due|worth|percent|%|scheduled|held|room|submit|grade|deadline)/i.test(line) || logistics.test(line) || /^(?:https?:\/\/|www\.)/i.test(line) || /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/.test(line) }
+function isLogistics(line: string) { return /^(?:title|topic|section|unit|lecture(?:\s+[0-9]+)?|chapter(?:\s+[0-9]+)?)\s*:/i.test(line) || /^(?:the |an? )?(?:assignment|assessment|exam|midterm|final exam|grading|marks|syllabus|schedule)\b.*(?:due|worth|percent|%|scheduled|held|room|submit|grade|deadline)/i.test(line) || logistics.test(line) || /^(?:https?:\/\/|www\.)/i.test(line) || /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/.test(line) }
+const conceptVerbs = 'is defined as|refers to|consists of|is|are|means|describes|includes|contains|converts|convert|releases|release|absorbs|absorb|stores|store|carries|carry|produces|produce|uses|use|requires|require|causes|cause|increases|increase|decreases|decrease|prevents|prevent|occurs|occur|controls|control|transports|transport|binds|bind|measures|measure|represents|represent|differs from|results in|allows|allow'
+const conceptSubject = new RegExp(`^(?:the |an? )?([A-Za-z][A-Za-z0-9'() /-]{0,85}?)\\s+(${conceptVerbs})\\b`, 'i')
+const conceptDefinition = /^([A-Za-z][A-Za-z0-9'() /-]{0,85}?):\s+\S/
+function startsFact(line: string) { return conceptSubject.test(line) || conceptDefinition.test(line) }
 export function studyPassages(notes: string): string[] {
   const normalized = notes.replace(/\r\n?/g, '\n').replace(/\u00ad/g, '').replace(/(?<=\p{L})-\n(?=\p{Ll})/gu, '')
   const paragraphs: string[] = []
@@ -10,11 +14,11 @@ export function studyPassages(notes: string): string[] {
     const line = raw.trim().replace(/^[\u2022\u25cf\u25aa]\s*/, '')
     const words = line.split(/\s+/)
     const heading = !!line && !/[.!?:;]/.test(line) && words.length >= 3 && words.length <= 16 && words.filter(word => /^[A-Z][A-Za-z'-]*$/.test(word)).length >= Math.max(1, Math.ceil(words.length * .8))
-    if (!line || isLogistics(line) || heading || /^(?:Page\s+)?[0-9]+(?:\s+(?:of|\/)\s+[0-9]+)?$/.test(line)) {
+    if (!line || isLogistics(line) || heading || /^#{1,6}\s+/.test(line) || /^(?:---+|===+|___+)$/.test(line) || /^(?:Page\s+)?[0-9]+(?:\s+(?:of|\/)\s+[0-9]+)?$/.test(line)) {
       if (current) paragraphs.push(current)
       current = ''; continue
     }
-    if (/^[\u2022\u25cf\u25aa]/.test(raw.trim()) && current) { paragraphs.push(current); current = '' }
+    if ((/^[\u2022\u25cf\u25aa]/.test(raw.trim()) || startsFact(line)) && current) { paragraphs.push(current); current = '' }
     current += (current ? ' ' : '') + line
   }
   if (current) paragraphs.push(current)
@@ -22,13 +26,11 @@ export function studyPassages(notes: string): string[] {
 }
 type Candidate = { source: string; term: string; score: number }
 function candidates(notes: string, focus: string): Candidate[] {
-  const verbs = 'is defined as|refers to|consists of|is|are|means|describes|includes|contains|converts|convert|releases|release|absorbs|absorb|stores|store|carries|carry|produces|produce|uses|use|requires|require|causes|cause|increases|increase|decreases|decrease|prevents|prevent|occurs|occur|controls|control|transports|transport|binds|bind|measures|measure|represents|represent|differs from|results in|allows|allow'
-  const subject = new RegExp(`^(?:the |an? )?([A-Za-z][A-Za-z0-9'() /-]{0,85}?)\\s+(${verbs})\\b`, 'i')
   const tokens = [...new Set(focus.toLowerCase().split(/[^a-z0-9]+/).filter(token => token.length >= 2))]
   return studyPassages(notes).flatMap(source => {
     if (isLogistics(source) || source.length > 1200 || (tokens.length && !tokens.some(token => source.toLowerCase().includes(token)))) return []
-    const definition = source.match(/^([A-Za-z][A-Za-z0-9'() /-]{0,85}?):\s+\S/)
-    const match = source.match(subject)
+    const definition = source.match(conceptDefinition)
+    const match = source.match(conceptSubject)
     if (!definition && !match) return []
     const term = (definition ?? match)![1].trim()
     if (term.split(/\s+/).length > 7 || /^(?:this|that|these|those|it|they|we|you|there|here|what|which|how|why|students|everyone|today|tomorrow|lecture|chapter|slide|course|introduction|overview|learning objectives?|by the end|remember|note|example|for example|in summary|first|next|finally)\b/i.test(term)) return []

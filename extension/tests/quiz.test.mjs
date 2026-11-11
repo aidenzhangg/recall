@@ -81,3 +81,20 @@ test('focus limits both new and adaptive questions without filling with unrelate
  assert.equal(adaptiveQuestions(lecture,5,'blank',history,1000,'respiration')[0].answer,'Mitochondria')
  assert.deepEqual(makeQuestions('Office hours are every Wednesday afternoon.',5,'mixed'),[])
 })
+
+test('short and sentence-case titles cannot become part of a body question', () => {
+ for (const title of ['Cell Biology', 'cell biology', 'How cells work', '# Cell biology', 'Biology:', 'Title: an introduction to the biology of cells']) {
+  const [q] = makeQuestions(`${title}\nCells are the fundamental units of living organisms.`,1,'blank')
+  assert.equal(q.source,'Cells are the fundamental units of living organisms.',title)
+  assert.equal(q.answer,'Cells',title)
+  assert.equal(q.prompt,'________ are the fundamental units of living organisms.',title)
+ }
+})
+test('independent facts without periods remain separate and wrapped subjects survive', () => {
+ const questions=makeQuestions('Cell biology\nCells are the fundamental units of living organisms\nMitochondria release energy through cellular respiration',5,'blank')
+ assert.equal(questions.length,2)
+ assert.deepEqual(questions.map(q=>q.answer),['Cells','Mitochondria'])
+ assert.equal(makeQuestions('Photosynthesis\nconverts sunlight into stored chemical energy.',1,'blank')[0].answer,'Photosynthesis')
+ assert.equal(makeQuestions('Homeostasis:\nregulation of stable internal conditions.',1,'blank')[0].answer,'Homeostasis')
+ assert.deepEqual(makeQuestions('Cell Biology',5,'blank'),[])
+})

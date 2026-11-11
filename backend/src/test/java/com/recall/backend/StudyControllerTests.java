@@ -46,4 +46,17 @@ class StudyControllerTests {
         assertThat(StudyController.generateAt(new StudyController.Generation("Office hours are every Wednesday afternoon.", 10, "blank", List.of()), 1000)).isEmpty();
         assertThat(StudyController.generateAt(new StudyController.Generation("Mitochondria release extraordinarily substantial amounts of energy.", 1, "blank", List.of()), 1000).getFirst().answer()).isEqualTo("Mitochondria");
     }
+
+    @Test void titlesDoNotAttachToBodyFactsAndWrappedSubjectsRemainIntact() {
+        for (String title : List.of("Cell Biology", "cell biology", "How cells work", "# Cell biology", "Biology:", "Title: an introduction to the biology of cells")) {
+            var question = StudyController.generateAt(new StudyController.Generation(title + "\nCells are the fundamental units of living organisms.", 1, "blank", List.of()), 1000).getFirst();
+            assertThat(question.source()).as(title).isEqualTo("Cells are the fundamental units of living organisms.");
+            assertThat(question.answer()).as(title).isEqualTo("Cells");
+        }
+        var separate = StudyController.generateAt(new StudyController.Generation("Cell biology\nCells are the fundamental units of living organisms\nMitochondria release energy through cellular respiration", 5, "blank", List.of()), 1000);
+        assertThat(separate).extracting(StudyController.Question::answer).containsExactly("Cells", "Mitochondria");
+        assertThat(StudyController.generateAt(new StudyController.Generation("Photosynthesis\nconverts sunlight into stored chemical energy.", 1, "blank", List.of()), 1000).getFirst().answer()).isEqualTo("Photosynthesis");
+        assertThat(StudyController.generateAt(new StudyController.Generation("Homeostasis:\nregulation of stable internal conditions.", 1, "blank", List.of()), 1000).getFirst().answer()).isEqualTo("Homeostasis");
+        assertThat(StudyController.generateAt(new StudyController.Generation("Cell Biology", 5, "blank", List.of()), 1000)).isEmpty();
+    }
 }

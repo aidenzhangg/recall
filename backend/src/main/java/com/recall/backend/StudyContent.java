@@ -10,6 +10,9 @@ final class StudyContent {
     private static final Pattern SUBJECT = Pattern.compile("^(?:[Tt]he |[Aa]n? )?([A-Za-z][A-Za-z0-9'() /-]{0,85}?)\\s+(" + VERBS + ")\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern DEFINITION = Pattern.compile("^([A-Za-z][A-Za-z0-9'() /-]{0,85}?):\\s+\\S");
     private static final Pattern GENERIC = Pattern.compile("(?i)^(?:this|that|these|those|it|they|we|you|there|here|what|which|how|why|students|everyone|today|tomorrow|lecture|chapter|slide|course|introduction|overview|learning objectives?|by the end|remember|note|example|for example|in summary|first|next|finally)\\b.*");
+    static boolean startsFact(String line) {
+        return SUBJECT.matcher(line).find() || DEFINITION.matcher(line).find();
+    }
     static List<Item> candidates(String notes, String focus) {
         var result = new ArrayList<Item>();
         for (String source : StudyPassages.split(notes)) {
