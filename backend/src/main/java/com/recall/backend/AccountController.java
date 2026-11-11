@@ -41,11 +41,17 @@ public class AccountController {
     public Map<String, String> logout(@RequestHeader(value="Authorization", defaultValue="") String authorization) {
         store.logout(token(authorization)); return Map.of("status", "ok");
     }
-    private String token(String header) {
+    public static String token(String header) {
         if (!header.startsWith("Bearer ") || header.length() < 8)
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Please sign in.");
         return header.substring(7);
     }
+    @ExceptionHandler(org.springframework.dao.DuplicateKeyException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> duplicate() { return Map.of("message", "An account already exists."); }
+    @ExceptionHandler(org.springframework.dao.DataAccessException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public Map<String, String> databaseFailure() { return Map.of("message", "Account storage is unavailable."); }
     @ExceptionHandler(IOException.class)
     @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
     public Map<String, String> storageFailure() { return Map.of("message", "Account storage is unavailable. Please try again."); }

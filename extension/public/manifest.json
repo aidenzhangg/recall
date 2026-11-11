@@ -1,9 +1,11 @@
 {
   "manifest_version": 3,
+  "minimum_chrome_version": "116",
   "name": "Recall",
   "version": "0.1.0",
   "description": "Study your course notes with practice quizzes, guided hints, and a focused tutor workspace.",
-  "permissions": ["sidePanel", "activeTab", "scripting"],
+  "permissions": ["sidePanel"],
+  "host_permissions": ["http://localhost:8080/*"],
   "action": { "default_title": "Open Recall" },
   "side_panel": { "default_path": "index.html" },
   "background": { "service_worker": "background.js" }

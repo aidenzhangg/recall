@@ -18,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class AccountStore {
     private final Path directory;
+    private JdbcAccounts database;
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Session> sessions = new HashMap<>();
     private final Map<String, Attempts> attempts = new HashMap<>();
@@ -31,10 +32,17 @@ public class AccountStore {
         this.directory = Path.of(directory).toAbsolutePath().normalize();
         Files.createDirectories(this.directory);
     }
+    @org.springframework.beans.factory.annotation.Autowired
+    public AccountStore(@Value("${recall.data-dir:./data/accounts}") String directory,
+            org.springframework.beans.factory.ObjectProvider<JdbcAccounts> database) throws IOException {
+        this(directory);
+        this.database = database.getIfAvailable();
+    }
+    private boolean exists(String key) { return database == null ? Files.exists(file(key)) : database.exists(key); }
     public synchronized Login register(String name, String email, String password) throws IOException {
         email = email.trim().toLowerCase(Locale.ROOT);
         String key = digest(email);
-        if (Files.exists(file(key))) throw new ResponseStatusException(HttpStatus.CONFLICT, "An account already exists for this email.");
+        if (exists(key)) throw new ResponseStatusException(HttpStatus.CONFLICT, "An account already exists for this email.");
         var properties = new Properties();
         byte[] salt = new byte[16]; random.nextBytes(salt);
         properties.setProperty("id", UUID.randomUUID().toString());
@@ -52,7 +60,7 @@ public class AccountStore {
         Attempts failures = attempts.get(key);
         if ((failures != null && failures.count() >= 8) || attempts.size() > 10000)
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Please wait a few minutes before trying again.");
-        Properties properties = Files.exists(file(key)) ? load(key) : null;
+        Properties properties = exists(key) ? load(key) : null;
         byte[] salt = properties == null ? new byte[16] : Base64.getDecoder().decode(properties.getProperty("salt"));
         byte[] expected = properties == null ? new byte[32] : Base64.getDecoder().decode(properties.getProperty("password"));
         if (!MessageDigest.isEqual(hashPassword(password, salt), expected) || properties == null) {
@@ -92,11 +100,13 @@ public class AccountStore {
     private User user(Properties p) { return new User(p.getProperty("id"), p.getProperty("name"), p.getProperty("email")); }
     private Path file(String key) { return directory.resolve(key + ".properties"); }
     private Properties load(String key) throws IOException {
+        if (database != null) return database.load(key);
         Properties p = new Properties();
         try (InputStream input = Files.newInputStream(file(key))) { p.load(input); }
         return p;
     }
     private void save(String key, Properties p) throws IOException {
+        if (database != null) { database.save(key, p); return; }
         Path temporary = Files.createTempFile(directory, "account-", ".tmp");
         try {
             try (OutputStream output = Files.newOutputStream(temporary)) { p.store(output, "Recall local account"); }

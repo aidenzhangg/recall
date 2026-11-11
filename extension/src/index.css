@@ -1,40 +1,41 @@
-@import '@fontsource/poppins/500.css';
-@import '@fontsource/poppins/600.css';
-@import '@fontsource/outfit/400.css';
-@import '@fontsource/outfit/500.css';
-@import '@fontsource/outfit/600.css';
-
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/600.css';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
 
 :root {
-  --font-display: 'Poppins', 'Segoe UI', sans-serif;
-  --font-body: 'Outfit', 'Segoe UI', sans-serif;
-  --canvas: #151c20;
-  --surface: #1d282d;
-  --raised: #29383d;
-  --input: #243238;
-  --ink: #eceeeb;
-  --muted: #a7b8b7;
-  --accent: #68b8ad;
-  --action: #68b8ad;
-  --action-hover: #83c8be;
-  --action-text: #122624;
-  --accent-surface: #243d3b;
-  --rule: #9cbab52b;
-  --rule-hover: #9cbab560;
-  --panel-border: #9cbab52b;
-  --nav-bg: #172d2c;
-  --nav-active: #2b4c48;
-  --nav-border: #87aaa530;
-  --nav-text: #d5e4df;
-  --nav-rule: #87aaa540;
-  --background: #151c20;
-  --assistant-bg: #243d3b;
-  --assistant-text: #eceeeb;
-  --assistant-label: #9dd5cb;
-  --secondary-text: #a8d8cf;
-  --secondary-hover: #30504b;
-  --page-copy: #b5c5c2;
-  --field-bg: #1a252a;
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --canvas: #171c19;
+  --surface: #202822;
+  --raised: #303c31;
+  --input: #263229;
+  --ink: #edf0e5;
+  --muted: #b0bba9;
+  --accent: #b6d77a;
+  --action: #b6d77a;
+  --action-hover: #c5e393;
+  --action-text: #1b2614;
+  --accent-surface: #2a3824;
+  --rule: #53634b;
+  --rule-hover: #839773;
+  --panel-border: #53634b;
+  --nav-bg: #171c19;
+  --nav-active: #354529;
+  --nav-border: #53634b;
+  --nav-text: #d7e1cc;
+  --nav-rule: #53634b;
+  --background: #171c19;
+  --assistant-bg: #2a3824;
+  --assistant-text: #edf0e5;
+  --assistant-label: #c5e393;
+  --secondary-text: #c5dc9c;
+  --secondary-hover: #38492e;
+  --page-copy: #b9c4b2;
+  --field-bg: #1d251f;
   --danger: #efb0a9;
   color-scheme: dark;
   font-family: var(--font-body);
@@ -47,28 +48,28 @@
   -webkit-font-smoothing: antialiased;
 }
 :root[data-theme='light'] {
-  --canvas: #f1f5f2;
-  --surface: #fafcf9;
-  --raised: #e1ebe6;
-  --input: #edf3ef;
-  --ink: #1d302e;
-  --muted: #536a65;
-  --accent: #286c63;
-  --action: #286c63;
-  --action-hover: #205b53;
-  --action-text: #f4f8f4;
-  --accent-surface: #dfede7;
-  --rule: #456e622b;
-  --rule-hover: #456e6260;
-  --panel-border: #456e622b;
-  --background: #f1f5f2;
-  --assistant-bg: #dfede7;
-  --assistant-text: #1d302e;
-  --assistant-label: #286c63;
-  --secondary-text: #286459;
-  --secondary-hover: #d1e4db;
-  --page-copy: #536a65;
-  --field-bg: #f7faf6;
+  --canvas: #f1f3e9;
+  --surface: #f8faef;
+  --raised: #e2e8d6;
+  --input: #eaf0de;
+  --ink: #25311f;
+  --muted: #58664d;
+  --accent: #466724;
+  --action: #466724;
+  --action-hover: #36551a;
+  --action-text: #f8faef;
+  --accent-surface: #e1e9d2;
+  --rule: #a2ae92;
+  --rule-hover: #768665;
+  --panel-border: #a2ae92;
+  --background: #f1f3e9;
+  --assistant-bg: #e1e9d2;
+  --assistant-text: #25311f;
+  --assistant-label: #466724;
+  --secondary-text: #466724;
+  --secondary-hover: #d6e2bf;
+  --page-copy: #58664d;
+  --field-bg: #f8faef;
   --danger: #a32e42;
   color-scheme: light;
 }
@@ -79,5 +80,5 @@ button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 button, textarea, input, select { transition: background-color 160ms, border-color 160ms, color 160ms; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-::selection { background: #68b8ad40; }
+::selection { background: #b6d77a40; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }

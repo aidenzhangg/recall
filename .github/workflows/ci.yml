@@ -33,11 +33,26 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Lint
         run: npm run lint
+      - name: Test quiz and adaptive review logic
+        run: npm test
       - name: Type-check and build extension
         run: npm run build
 
   backend:
     name: Backend tests and build
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: recall_test
+          POSTGRES_USER: recall_test
+          POSTGRES_PASSWORD: ci-only-disposable-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U recall_test -d recall_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -45,6 +60,9 @@ jobs:
         working-directory: backend
     env:
       OPENAI_API_KEY: ''
+      RECALL_TEST_POSTGRES_URL: jdbc:postgresql://localhost:5432/recall_test
+      RECALL_TEST_POSTGRES_USER: recall_test
+      RECALL_TEST_POSTGRES_PASSWORD: ci-only-disposable-password
     steps:
       - uses: actions/checkout@v7
         with:

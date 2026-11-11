@@ -3,3 +3,10 @@
 
 # Recall account storage if the backend is started from the project root
 /data/
+
+# Private deployment configuration and database files
+.env
+.env.*
+!.env.example
+*.jks
+*.p12

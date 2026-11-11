@@ -221,3 +221,77 @@ textarea, select, .question input { background-color: var(--field-bg); font-size
 }
 @media (max-width: 360px) { .panel { gap: 0 10px; padding-inline: 10px; } .save-status { max-width: 90px; } .session-overview { padding: 16px 12px; } .session-stats { gap: 6px; } .session-stats dd { font-size: 16px; } }
 @media (forced-colors: active) { select { appearance: auto; background-image: none; } .tab.active, .mode-toggle button[aria-pressed='true'] { outline: 1px solid Highlight; } }
+
+/* Compact native-utility direction: typography and rules, not stacked cards. */
+.panel { max-width: 1100px; padding-inline: 12px; column-gap: 14px; }
+.masthead { min-height: 62px; padding-block: 8px; }
+.brand h1 { letter-spacing: -.7px; font-size: 18px; }
+.brand-mark { border-radius: 2px; width: 27px; height: 29px; font-size: 24px; }
+.header-controls .save-status { max-width: 160px; font-family: var(--font-mono); font-size: 10px; }
+.tabs { padding-top: 14px; gap: 4px; }
+.tab, .theme-switch button { border-radius: 3px; }
+.tab.active { color: var(--accent); background: var(--accent-surface); box-shadow: inset 2px 0 var(--accent); }
+.tabs .agent-bar { margin-top: 12px; }
+.agent-bar strong, .field-label, .chat-mode, .quiz-progress, .app-footer, .session-stats dt, .session-stats dd, .activity-summary > div > span { font-family: var(--font-mono); }
+.agent-bar strong { font-size: 9px; letter-spacing: -.3px; }
+.mode-toggle, .mode-toggle button { border-radius: 3px; }
+.workspace { padding-block: 22px; }
+.content, .dashboard { gap: 22px; }
+h2, h3 { font-weight: 500; letter-spacing: -.6px; }
+.page-heading h2 { font-size: 22px; }
+.session-overview { padding: 0 0 22px; gap: 18px; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; background: transparent; }
+.session-overview h3 { font-size: 18px; }
+.session-stats dd { font-size: 19px; font-weight: 400; }
+.session-stats dt { font-size: 9px; }
+.dashboard-links { gap: 0; }
+.dashboard-links button { min-height: 48px; font-size: 13px; }
+.primary, .secondary, textarea, select, .question input, .profile-form input { border-radius: 3px; box-shadow: none; }
+.primary { min-height: 46px; font-weight: 600; }
+.secondary { border-color: var(--rule); background: transparent; color: var(--ink); }
+.secondary:hover:not(:disabled) { background: var(--surface); }
+textarea, select, .question input { font-size: 14px; }
+.editor textarea { min-height: 240px; }
+.field-heading { font-size: 12px; }
+.field-heading > span { font-family: var(--font-mono); font-size: 10px; }
+.material-panel { padding-bottom: 16px; }
+.material-heading strong { font-size: 12px; font-weight: 500; }
+.material-heading p { font-size: 10px; }
+.material-panel .secondary { margin-top: 12px; }
+.source { border-top: 0; padding-top: 0; }
+.result { border-radius: 0; }
+.question .choice-options label { border-radius: 3px; }
+.coach-message, .coach-message--you { border-radius: 3px; line-height: 1.7; }
+.coach-messages { max-height: 42dvh; }
+.coach-context { font-size: 13px; }
+.coach-form { gap: 10px; }
+.coach-form .primary { order: 3; }
+.coach-form .muted { order: 4; }
+.focus-panel { gap: 18px; }
+.focus-clock { font-family: var(--font-mono); font-size: clamp(36px, 8vw, 64px); }
+.focus-durations button { border-radius: 3px; }
+.deep-learn-preview { margin-top: 10px; }
+.deep-learn-preview > summary { cursor: pointer; min-height: 44px; display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
+.deep-learn-preview > summary > span { font: 10px var(--font-mono); }
+.camera-placeholder { border-radius: 3px; }
+.profile-panel .muted, .muted { line-height: 1.65; }
+.adaptive-control { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 12px; }
+.adaptive-control input { width: 18px; height: 18px; accent-color: var(--accent); }
+.control-label { display: grid; gap: 10px; font-size: 12px; }
+.control-label input, .pairing-details input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--rule); border-radius: 3px; padding: 10px; background: var(--field-bg); color: var(--ink); font-size: 12px; }
+.pairing-details { display: grid; gap: 10px; border-left: 2px solid var(--accent); padding-left: 12px; }
+.pairing-details .text-button { justify-self: start; }
+.inbox-heading { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--rule); padding-top: 10px; }
+.inbox-heading h3 { font-size: 16px; }
+.transfer-list { list-style: none; padding: 0; margin: 0; }
+.transfer-list li { display: flex; justify-content: space-between; border-bottom: 1px solid var(--rule); }
+.transfer-list:empty { display: none; }
+.photo-review { display: grid; gap: 14px; }
+.photo-review img { max-width: 100%; max-height: 300px; object-fit: contain; background: var(--surface); }
+.photo-review label { font-size: 12px; }
+.photo-review textarea { margin-top: 8px; }
+.flashcard { display: grid; gap: 24px; min-height: 240px; padding-block: 24px; border-block: 1px solid var(--rule); align-content: center; }
+.flashcard h3 { font-size: 26px; color: var(--accent); overflow-wrap: anywhere; }
+.flashcard p { font-size: 14px; line-height: 1.8; }
+@media (min-width: 700px) { .panel { grid-template-columns: 158px minmax(0, 1fr); column-gap: 28px; padding-inline: 24px; } .session-overview { padding: 0 0 24px; } .session-stats dd { font-size: 24px; } .dashboard-links { gap: 24px; } .workspace { padding-block: 30px; } }
+
+.pairing-qr { width: 180px; height: 180px; max-width: 100%; image-rendering: pixelated; }

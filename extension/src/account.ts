@@ -1,18 +1,19 @@
-import type { Question, QuizFormat } from './quiz'
+import type { Question, QuizFormat, ReviewItem } from './quiz'
 import { API_BASE } from './api'
 export type User = { id: string; name: string; email: string }
 export type Account = { token: string; user: User }
-export type SavedProgress = { version: 1; notes: string; noteName: string; count: number; format?: QuizFormat; hintsOn: boolean; questions: Question[]; answers: string[]; submitted: boolean; questionIndex: number; studyDays: string[] }
+export type SavedProgress = { version: 1; notes: string; noteName: string; count: number; format?: QuizFormat; hintsOn: boolean; questions: Question[]; answers: string[]; submitted: boolean; questionIndex: number; studyDays: string[]; review?: ReviewItem[]; adaptive?: boolean }
 export function parseProgress(raw: string): SavedProgress {
   const v = JSON.parse(raw)
   if (v?.version !== 1 || typeof v.notes !== 'string' || typeof v.noteName !== 'string' || typeof v.hintsOn !== 'boolean'
     || !Array.isArray(v.questions) || v.questions.length > 15 || !v.questions.every((q: { prompt?: unknown; answer?: unknown }) => q && typeof q.prompt === 'string' && typeof q.answer === 'string')
     || !Array.isArray(v.answers) || !v.answers.every((a: unknown) => typeof a === 'string') || typeof v.submitted !== 'boolean'
     || !Array.isArray(v.studyDays) || !v.studyDays.every((d: unknown) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))) throw new Error('Saved progress could not be read. Your workspace has not been changed.')
-  return { version: 1, notes: v.notes, noteName: v.noteName, count: [5,10,15].includes(v.count) ? v.count : 5, hintsOn: v.hintsOn, format: ['blank','choice','long','mixed'].includes(v.format) ? v.format : 'blank', questions: v.questions.map((q: Question) => {
+  const review: ReviewItem[] = Array.isArray(v.review) ? v.review.filter((item: ReviewItem) => item && typeof item.source === 'string' && item.source.length <= 20000 && typeof item.topic === 'string' && item.topic.length <= 4000 && Number.isInteger(item.misses) && item.misses >= 0 && Number.isInteger(item.successes) && item.successes >= 0 && Number.isFinite(item.dueAt)).slice(-250) : []
+  return { review, adaptive: v.adaptive !== false, version: 1, notes: v.notes, noteName: v.noteName, count: [5,10,15].includes(v.count) ? v.count : 5, hintsOn: v.hintsOn, format: ['blank','choice','long','mixed'].includes(v.format) ? v.format : 'blank', questions: v.questions.map((q: Question) => {
       const kind = q.kind ?? 'blank'
       if (!['blank','choice','long'].includes(kind) || (kind === 'choice' && (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 4 || !q.options.every(option => typeof option === 'string') || new Set(q.options).size !== q.options.length || !q.options.includes(q.answer)))) throw new Error('Invalid saved question')
-      return { prompt: q.prompt, answer: q.answer, kind, ...(kind === 'choice' ? { options: q.options } : {}) }
+      return { prompt: q.prompt, answer: q.answer, kind, ...(typeof q.source === 'string' ? { source: q.source } : {}), ...(typeof q.topic === 'string' ? { topic: q.topic } : {}), ...(kind === 'choice' ? { options: q.options } : {}) }
     }),
     answers: v.questions.map((_: unknown, i: number) => v.answers[i] ?? ''), submitted: v.submitted,
     questionIndex: Math.max(0, Math.min(Number.isInteger(v.questionIndex) ? v.questionIndex : 0, v.questions.length - 1)), studyDays: [...new Set<string>(v.studyDays)].sort().slice(-366) }

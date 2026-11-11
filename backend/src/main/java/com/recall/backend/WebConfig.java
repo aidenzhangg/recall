@@ -13,7 +13,7 @@ public class WebConfig implements WebMvcConfigurer {
 	public void addCorsMappings(CorsRegistry registry) {
 		registry.addMapping("/api/**")
 				.allowedOriginPatterns("chrome-extension://*", "http://localhost:5173")
-				.allowedMethods("GET", "POST");
+				.allowedMethods("GET", "POST", "DELETE");
 	}
 
 }

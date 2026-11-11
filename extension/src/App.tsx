@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import { checkHealth } from './api'
+import { checkHealth, requestQuiz, extractPdf } from './api'
 import HintCoach from './HintCoach'
 import FocusTimer from './FocusTimer'
 import Profile from './Profile'
+import Connect from './Connect'
+import Flashcards from './Flashcards'
 import { accountRequest, parseProgress, readToken, rememberToken, saveProgress } from './account'
 import type { Account, SavedProgress } from './account'
 import { dateKey, recentDays, streakLength, readStudyDays } from './activity'
 import './App.css'
-import { makeQuestions, isCorrect } from './quiz'
-import type { Question, QuizFormat } from './quiz'
+import { makeQuestions, isCorrect, adaptiveQuestions, recordAttempt } from './quiz'
+import type { Question, QuizFormat, ReviewItem } from './quiz'
 
-type Tab = 'Dashboard' | 'Notes' | 'Practice' | 'Tutor' | 'Focus' | 'Profile'
+type Tab = 'Dashboard' | 'Notes' | 'Practice' | 'Tutor' | 'Focus' | 'Connect' | 'Cards' | 'Profile'
 function NavIcon({ name }: { name: Tab }) {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{name === 'Focus' ? <><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2M9 2h6" /></> : name === 'Dashboard' ? <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></> : name === 'Notes' ? <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></> : name === 'Practice' ? <><rect x="4" y="3" width="16" height="18" rx="3" /><path d="m8 9 1.5 1.5L12 8m2 2h2M8 15h8" /></> : <><path d="M20 15a3 3 0 0 1-3 3H9l-5 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" /><path d="M8 8h8M8 12h5" /></>}</svg>
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{name === 'Connect' ? <><rect x="4" y="2" width="10" height="18" rx="2" /><path d="M8 17h2m7-10 4 4-4 4m-5-4h9" /></> : name === 'Cards' ? <><rect x="3" y="6" width="15" height="15" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></> : name === 'Focus' ? <><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2M9 2h6" /></> : name === 'Dashboard' ? <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></> : name === 'Notes' ? <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></> : name === 'Practice' ? <><rect x="4" y="3" width="16" height="18" rx="3" /><path d="m8 9 1.5 1.5L12 8m2 2h2M8 15h8" /></> : <><path d="M20 15a3 3 0 0 1-3 3H9l-5 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" /><path d="M8 8h8M8 12h5" /></>}</svg>
 }
 function App() {
   const [studyDays, setStudyDays] = useState(readStudyDays)
@@ -24,6 +26,7 @@ function App() {
     const today = dateKey(new Date())
     setStudyDays(previous => previous.includes(today) ? previous : [...previous, today].sort().slice(-366))
   }, [])
+  const [importing, setImporting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const [tab, setTab] = useState<Tab>('Dashboard')
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -39,7 +42,12 @@ function App() {
   const [noteName, setNoteName] = useState('Pasted notes')
   const [error, setError] = useState('')
   const [serverUp, setServerUp] = useState<boolean | null>(null)
+  const generationId = useRef(0)
+  const [generating, setGenerating] = useState(false)
+  const [quizOrigin, setQuizOrigin] = useState('')
   const [count, setCount] = useState(5)
+  const [review, setReview] = useState<ReviewItem[]>([])
+  const [adaptive, setAdaptive] = useState(true)
   const [format, setFormat] = useState<QuizFormat>('blank')
   const [questions, setQuestions] = useState<Question[]>([])
   const [answers, setAnswers] = useState<string[]>([])
@@ -50,9 +58,9 @@ function App() {
   const [account, setAccount] = useState<Account | null>(null)
   const [restoring, setRestoring] = useState(!!savedToken)
   const [syncStatus, setSyncStatus] = useState('Not saved yet')
-  const progress = useMemo<SavedProgress>(() => ({ version: 1, notes, noteName, count, format, hintsOn, questions, answers, submitted, questionIndex, studyDays }), [notes, noteName, count, format, hintsOn, questions, answers, submitted, questionIndex, studyDays])
+  const progress = useMemo<SavedProgress>(() => ({ version: 1, notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays }), [notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays])
   const applyProgress = useCallback((saved: SavedProgress) => {
-    setNotes(saved.notes); setNoteName(saved.noteName); setCount(saved.count); setFormat(saved.format ?? 'blank'); setHintsOn(saved.hintsOn)
+    setReview(saved.review ?? []); setAdaptive(saved.adaptive !== false); setNotes(saved.notes); setNoteName(saved.noteName); setCount(saved.count); setFormat(saved.format ?? 'blank'); setHintsOn(saved.hintsOn)
     setQuestions(saved.questions); setAnswers(saved.answers); setSubmitted(saved.submitted)
     setQuestionIndex(saved.questionIndex); setStudyDays(saved.studyDays)
   }, [])
@@ -81,7 +89,7 @@ function App() {
       setSyncStatus('Saving progress')
       saveProgress(account, progress, AbortSignal.any([abort.signal, AbortSignal.timeout(15000)]))
         .then(() => { if (!abort.signal.aborted) setSyncStatus('All progress saved') })
-        .catch(() => { if (!abort.signal.aborted) setSyncStatus('Not saved  open Profile to retry or sign in again') })
+        .catch(() => { if (!abort.signal.aborted) setSyncStatus('Not saved - open Profile to retry or sign in again') })
     }, 800)
     return () => { window.clearTimeout(timer); abort.abort() }
   }, [account, progress])
@@ -92,7 +100,7 @@ function App() {
       await saveProgress(account, progress)
       setSyncStatus('All progress saved')
     } catch (failure) {
-      setSyncStatus('Not saved  retry or sign in again')
+      setSyncStatus('Not saved - retry or sign in again')
       throw failure
     }
   }
@@ -109,36 +117,49 @@ function App() {
     event.target.value = ''
     if (!file) return
     setError('')
-    if (file.size > 20 * 1024 * 1024) { setError('Choose notes under 20 MB.'); return }
-    if (!/\.(txt|md)$/i.test(file.name)) { setError('Choose a .txt or .md file, or paste your notes below.'); return }
-    try { setNotes(await file.text()); setNoteName(file.name) }
-    catch { setError('Could not read that file. Please try again.') }
+    if (file.size > 5 * 1024 * 1024) { setError('Choose a file under 5 MB.'); return }
+    if (!/\.(txt|md|pdf)$/i.test(file.name)) { setError('Choose a .txt, .md or text-based PDF file.'); return }
+    setImporting(true)
+    try {
+      const text = /\.pdf$/i.test(file.name) ? await extractPdf(file) : await file.text()
+      if (text.length > 200000) { setError('Use material under 200,000 characters.'); return }
+      setNotes(text); setNoteName(file.name)
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not import the file.') }
+    finally { setImporting(false) }
   }
-  function generate() {
-    const next = makeQuestions(notes, count, format)
-    if (!next.length) { setError('Add complete sentences with at least five words to create a quiz.'); return }
-    setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false)
-    setQuestionIndex(0); setError(''); setTab('Practice')
+  async function generate() {
+    if (generating) return
+    const id = ++generationId.current
+    setGenerating(true); setError('')
+    try {
+      let next: Question[]
+      try { next = await requestQuiz(notes, count, format, adaptive ? review : []); setQuizOrigin('Backend practice') }
+      catch { next = adaptive ? adaptiveQuestions(notes, count, format, review) : makeQuestions(notes, count, format); setQuizOrigin('Local practice - backend unavailable') }
+      if (id !== generationId.current) return
+      if (!next.length) { setError('Add complete sentences with at least five words to create a quiz.'); return }
+      setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false)
+      setQuestionIndex(0); setTab('Practice')
+    } finally { if (id === generationId.current) setGenerating(false) }
   }
   function openWorkspace() {
     if (typeof chrome !== 'undefined' && chrome.tabs) void chrome.tabs.create({ url: chrome.runtime.getURL('index.html') })
     else window.open(window.location.href, '_blank', 'noopener,noreferrer')
   }
-  function navigate(next: Tab) { setTab(next); setError('') }
+  function navigate(next: Tab) { generationId.current++; setGenerating(false); setTab(next); setError('') }
   const words = notes.trim() ? notes.trim().split(/\s+/).length : 0
   const answered = answers.filter(a => a.trim()).length
   const graded = questions.filter(q => q.kind !== 'long').length
   const score = questions.filter((q, i) => isCorrect(q, answers[i])).length
   const question = questions[questionIndex]
   return <main className="panel">
-    <header className="masthead"><div className="brand"><span className="brand-mark" aria-hidden="true">r</span><div><h1>Recall</h1></div></div><div className="header-controls"><button className="save-status" onClick={() => navigate('Profile')}>{account ? syncStatus : 'Sign in'}</button><button className="profile-button" onClick={() => navigate('Profile')} title={account ? account.user.name : 'Sign in'} aria-label={account ? 'Open your profile' : 'Sign in to Recall'}>{account ? account.user.name.slice(0,1).toUpperCase() : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="12" cy="8" r="3"/><path d="M6 21v-3a6 6 0 0 1 12 0v3"/></svg>}</button><button className="expand-button" onClick={openWorkspace} aria-label="Open Recall in a new tab" title="Open in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></button></div></header>
+    <header className="masthead"><div className="brand"><span className="brand-mark" aria-hidden="true">r</span><div><h1>Recall</h1></div></div><div className="header-controls"><button className="save-status" onClick={() => navigate('Profile')}>{account ? syncStatus : 'Sign in'}</button><button className="expand-button" onClick={openWorkspace} aria-label="Open Recall in a new tab" title="Open in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></button></div></header>
 
-    <nav className="tabs" aria-label="Study workspace">{(['Dashboard', 'Notes', 'Practice', 'Tutor', 'Focus'] as Tab[]).map(name => <button key={name} title={name} aria-label={name} className={`tab${tab === name ? ' active' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon name={name} /><span className="tab-label">{name}</span></button>)}<section className="agent-bar" aria-label="Study assistance controls"><div><strong>Hints Mode</strong></div><div className={`mode-toggle${hintsOn ? ' mode-toggle--on' : ''}`} role="group" aria-label="Hints Mode"><span className="mode-indicator" aria-hidden="true" /><button aria-pressed={hintsOn} onClick={() => setHintsOn(true)}>On</button><button aria-pressed={!hintsOn} onClick={() => setHintsOn(false)}>Off</button></div></section><div className="theme-switch" role="group" aria-label="Appearance"><button type="button" aria-label="Light mode" title="Light mode" aria-pressed={theme === 'light'} onClick={() => setTheme('light')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg></button><button type="button" aria-label="Dark mode" title="Dark mode" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" /></svg></button></div></nav>
+    <nav className="tabs" aria-label="Study workspace">{(['Dashboard', 'Notes', 'Practice', 'Tutor', 'Cards', 'Focus', 'Connect'] as Tab[]).map(name => <button key={name} title={name} aria-label={name} className={`tab${tab === name ? ' active' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon name={name} /><span className="tab-label">{name === 'Cards' ? 'Flashcards' : name}</span></button>)}<section className="agent-bar" aria-label="Study assistance controls"><div><strong>Hints Mode</strong></div><div className={`mode-toggle${hintsOn ? ' mode-toggle--on' : ''}`} role="group" aria-label="Hints Mode"><span className="mode-indicator" aria-hidden="true" /><button aria-pressed={hintsOn} onClick={() => setHintsOn(true)}>On</button><button aria-pressed={!hintsOn} onClick={() => setHintsOn(false)}>Off</button></div></section><div className="theme-switch" role="group" aria-label="Appearance"><button type="button" aria-label="Light mode" title="Light mode" aria-pressed={theme === 'light'} onClick={() => setTheme('light')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg></button><button type="button" aria-label="Dark mode" title="Dark mode" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" /></svg></button></div></nav>
     {restoring && <p className="restore-status" role="status">Restoring your account</p>}
     {error && <p className="error" role="alert">{error}</p>}
     <div inert={restoring} className={tab === 'Tutor' ? 'workspace workspace--tutor' : tab === 'Dashboard' ? 'workspace workspace--dashboard' : 'workspace'}>
     {tab === 'Dashboard' && <section className="dashboard" aria-labelledby="dashboard-title">
-      <div className="page-heading"><h2 id="dashboard-title">Overview</h2></div>
+      <div className="page-heading"><h2 id="dashboard-title">Workspace</h2></div>
       <section className="session-overview" aria-label="Current material">
         <div className="overview-heading"><span>Current material</span><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'}</button></div>
         <h3>{words ? noteName : 'No notes added'}</h3>
@@ -149,18 +170,20 @@ function App() {
       <div className="dashboard-links"><button onClick={() => navigate('Tutor')}><span>Recall AI</span><span aria-hidden="true">&rarr;</span></button><button onClick={() => navigate('Focus')}><span>Focus timer</span><span aria-hidden="true">&rarr;</span></button></div>
       <section className="activity-summary" aria-label="Study activity"><div><h3>Activity</h3><span>{streakLength(studyDays)}-day streak</span></div><div className="streak-days" aria-label="Study activity over the last seven days">{recentDays().map(day => <span key={day} className={studyDays.includes(day) ? 'streak-day active' : 'streak-day'} title={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`} aria-label={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`}>{Number(day.slice(-2))}</span>)}</div></section>
     </section>}
+    {tab === 'Connect' && <Connect key={account?.user.id ?? 'guest'} account={account} onSignIn={() => navigate('Profile')} onImport={text => { setNotes(previous => previous ? `${previous}\n\n${text}` : text); setNoteName('Imported material'); navigate('Notes') }} />}
+    {tab === 'Cards' && <Flashcards key={notes} notes={notes} onNotes={() => navigate('Notes')} />}
     {tab === 'Profile' && <Profile account={account} syncStatus={syncStatus} onAuthenticated={authenticate} onSave={saveNow} onSignOut={signOut} />}
     <div hidden={tab !== 'Focus'}><FocusTimer key={account?.user.id ?? 'guest'} onComplete={recordStudyDay} /></div>
     {tab === 'Notes' && <section className="content" aria-labelledby="notes-title">
       <div className="page-heading"><h2 id="notes-title">Notes</h2></div>
-      <div className="material-panel"><div className="material-heading"><NavIcon name="Notes" /><div><strong>{words ? noteName : 'Add course notes'}</strong><p>Text or Markdown - up to 20 MB</p></div></div><input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,text/plain,text/markdown" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} /><button className="secondary" onClick={() => inputRef.current?.click()}>{words ? 'Replace file' : 'Upload notes'}</button></div>
-      <div className="editor"><div className="field-heading"><label htmlFor="notes">Paste or edit notes</label><span>{words} words</span></div><textarea id="notes" value={notes} onChange={e => { setNotes(e.target.value); setNoteName('Pasted notes') }} placeholder="Paste definitions, notes, or a topic you want to review" /></div>
-      <button className="primary" disabled={!notes.trim()} onClick={() => navigate('Practice')}>Set up practice </button>
+      <div className="material-panel"><div className="material-heading"><NavIcon name="Notes" /><div><strong>{words ? noteName : 'Add course notes'}</strong><p>Notes or past paper / TXT, MD, PDF / 5 MB</p></div></div><input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} /><button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Importing...' : words ? 'Replace material' : 'Import material'}</button></div>
+      <div className="editor"><div className="field-heading"><label htmlFor="notes">Paste or edit notes</label><span>{words} words</span></div><textarea id="notes" maxLength={200000} value={notes} onChange={e => { setNotes(e.target.value); setNoteName('Pasted notes') }} placeholder="Paste definitions, notes, or a topic you want to review" /></div>
+      <button className="primary" disabled={!notes.trim() || importing} onClick={() => navigate('Practice')}>Set up practice </button>
     </section>}
     {tab === 'Practice' && <section className="content" aria-labelledby="practice-title">
       <div className="page-heading"><h2 id="practice-title">{questions.length ? 'Practice session' : 'New quiz'}</h2></div>
-      {!questions.length ? <><div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><p className="muted">Short notes may produce fewer questions. Quizzes are created locally from your sentences.</p><button className="primary" disabled={!notes.trim()} onClick={generate}>Start practice </button></> : <>
-        <div className="quiz-progress"><div><span>Question {questionIndex + 1} of {questions.length}</span><span>{answered} answered</span></div><progress value={answered} max={questions.length} aria-label="Questions answered" /></div>
+      {!questions.length ? <><div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><p className="muted">Quiz generation processes these notes on your Recall backend. No model request is made.</p><label className="adaptive-control"><input type="checkbox" checked={adaptive} onChange={e => setAdaptive(e.target.checked)} /><span>Prioritize topics I missed</span></label><p className="muted">{review.filter(item => item.misses > item.successes).length} topics need practice. Written answers use self-review.</p><button className="primary" disabled={!notes.trim() || generating} onClick={() => void generate()}>{generating ? 'Preparing...' : 'Start practice'} </button></> : <>
+        <p className="muted" role="status">{quizOrigin}</p><div className="quiz-progress"><div><span>Question {questionIndex + 1} of {questions.length}</span><span>{answered} answered</span></div><progress value={answered} max={questions.length} aria-label="Questions answered" /></div>
         <div className="question"><label id="question-prompt" htmlFor={`answer-${questionIndex}`}>{question.prompt}</label>
           {question.kind === 'choice' ? <fieldset className="choice-options" aria-labelledby="question-prompt"><legend className="visually-hidden">Choose an answer</legend>{question.options?.map(option => <label key={option}><input type="radio" name={`answer-${questionIndex}`} value={option} checked={answers[questionIndex] === option} disabled={submitted} onChange={() => setAnswers(previous => previous.map((a, i) => i === questionIndex ? option : a))} /><span>{option}</span></label>)}</fieldset>
           : question.kind === 'long' ? <textarea id={`answer-${questionIndex}`} value={answers[questionIndex]} disabled={submitted} placeholder="Write your explanation" onChange={e => setAnswers(previous => previous.map((a, i) => i === questionIndex ? e.target.value : a))} />
@@ -168,7 +191,7 @@ function App() {
           {submitted && (question.kind === 'long' ? <div className="feedback"><p>Self-review: this response is not automatically scored.</p>{hintsOn ? <p>Compare your explanation with your notes or ask for a hint.</p> : <><strong>Reference answer</strong><p>{question.answer}</p></>}</div> : <p className={isCorrect(question, answers[questionIndex]) ? 'correct' : 'feedback'}>{isCorrect(question, answers[questionIndex]) ? 'Correct.' : hintsOn ? 'Incorrect. Ask for a hint or retry.' : `Answer: ${question.answer}`}</p>)}
         </div>
         <div className="question-navigation"><button className="text-button" disabled={questionIndex === 0} onClick={() => setQuestionIndex(i => i - 1)}> Previous</button><button className="text-button" disabled={questionIndex === questions.length - 1} onClick={() => setQuestionIndex(i => i + 1)}>Next </button></div>
-        {submitted ? <><p className="result" role="status">{graded ? `${score} of ${graded} auto-scored answers correct` : 'Responses ready for self-review'}{questions.length > graded && graded > 0 ? `; ${questions.length - graded} for self-review` : ''}</p><button className="primary" onClick={() => setSubmitted(false)}>Retry answers </button></> : <button className="primary" disabled={answered !== questions.length} onClick={() => { setSubmitted(true); recordStudyDay() }}>Check all answers </button>}
+        {submitted ? <><p className="result" role="status">{graded ? `${score} of ${graded} auto-scored answers correct` : 'Responses ready for self-review'}{questions.length > graded && graded > 0 ? `; ${questions.length - graded} for self-review` : ''}</p><button className="primary" onClick={() => setSubmitted(false)}>Retry answers </button></> : <button className="primary" disabled={answered !== questions.length} onClick={() => { setSubmitted(true); setReview(previous => recordAttempt(previous, questions, answers)); recordStudyDay() }}>Check all answers </button>}
         <div className="quiz-tools">{hintsOn && <button className="text-button" onClick={() => navigate('Tutor')}>Ask for a hint </button>}<button className="text-button" onClick={() => { setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0) }}>New session</button></div>
       </>}
     </section>}
