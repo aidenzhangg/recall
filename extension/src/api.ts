@@ -15,7 +15,7 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
-export async function requestHint(question: string, message: string): Promise<{ hint: string; mode: 'ai' | 'local' }> {
+export async function requestHint(question: string, message: string): Promise<{ hint: string; mode: 'local' }> {
   const response = await fetch(`${API_BASE}/hints`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -24,7 +24,7 @@ export async function requestHint(question: string, message: string): Promise<{ 
   })
   if (!response.ok) throw new Error('Hint request failed')
   const data = await response.json()
-  if (typeof data.hint !== 'string' || !['ai', 'local'].includes(data.mode)) throw new Error('Invalid hint response')
+  if (typeof data.hint !== 'string' || data.mode !== 'local') throw new Error('Invalid hint response')
   return data
 }
 

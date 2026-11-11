@@ -8,7 +8,7 @@ A Chrome side-panel workspace for studying your own notes and course materials. 
 - Create fill-in-the-blank, multiple-choice, long-answer or mixed practice. The Spring Boot endpoint prioritizes previously missed material; the extension has a local fallback.
 - Track misses and successful attempts per source passage, schedule later review after correct responses, retry answers and save history with account progress. This is a rule-based review scheduler, not a trained adaptive ML model.
 - Block distracting domains and their subdomains from **Block sites**. The on/off control and domain list stay on this browser profile; blocking uses Chrome rules without recording browsing history. Existing pages are not closed.
-- Use flashcards, a deadline-based focus timer, and a hint-only Recall AI tutor. Long answers are explicitly self-reviewed.
+- Use flashcards, a deadline-based focus timer, and built-in study hints. Long answers are explicitly self-reviewed.
 - Register/sign in to save progress. Local file storage is the default; a PostgreSQL profile is available.
 - Pair a phone from Connect using a locally generated QR code. Open the browser upload page without installing an app, send a JPEG/PNG, then refresh the desktop inbox to review/transcribe and import its text.
 
@@ -16,7 +16,7 @@ The interface uses a compact utility layout, Space Grotesk + IBM Plex Sans typog
 
 ## Stack
 
-React, TypeScript, Vite, plain CSS, Chrome Manifest V3, Java 21, Spring Boot, JDBC/PostgreSQL, PDFBox, Maven and GitHub Actions. OpenAI is optional for selecting restricted hint strategies; no key is needed for local hints or quizzes.
+React, TypeScript, Vite, plain CSS, Chrome Manifest V3, Java 21, Spring Boot, JDBC/PostgreSQL, PDFBox, Maven and GitHub Actions. Hints and quizzes use local rules. No external AI provider or API key is used.
 
 ## Run locally
 
@@ -72,7 +72,7 @@ Set `VITE_API_BASE` at build time to the HTTPS backend `/api` URL. Add only that
 
 ## Privacy and limits
 
-Quiz generation sends the provided notes and review history to your Recall backend, without a model request. Signed-in snapshots are stored on the configured backend. Hints send the selected prompt and message to the backend and optionally OpenAI; the hint request does not send the full notes or answer key. Keys stay server-side. Passwords use salted PBKDF2 hashes. Local files and PostgreSQL application data are not encrypted by this application; secure storage/backups at deployment time.
+Quiz generation sends the provided notes and review history to your Recall backend, without a model request. Signed-in snapshots are stored on the configured backend. Hints send only the selected prompt and message to your Recall backend. The application does not call an external AI provider or read an AI API key. Passwords use salted PBKDF2 hashes. Local files and PostgreSQL application data are not encrypted by this application; secure storage/backups at deployment time.
 
 Pairing capabilities are kept in URL fragments on the phone link, removed from its address bar after loading, and sent in a header rather than a query string. The server retains a hash of the capability. Keep pairing links private. Uploads are accessible only through the paired account's authenticated inbox. Validation errors return generic messages instead of echoing rejected values.
 
