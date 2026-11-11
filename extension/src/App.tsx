@@ -5,6 +5,7 @@ import HintCoach from './HintCoach'
 import FocusTimer from './FocusTimer'
 import Profile from './Profile'
 import Connect from './Connect'
+import { appendMaterial } from './material'
 import Flashcards from './Flashcards'
 import { accountRequest, parseProgress, readToken, rememberToken, saveProgress } from './account'
 import type { Account, SavedProgress } from './account'
@@ -170,7 +171,7 @@ function App() {
       <div className="dashboard-links"><button onClick={() => navigate('Tutor')}><span>Recall AI</span><span aria-hidden="true">&rarr;</span></button><button onClick={() => navigate('Focus')}><span>Focus timer</span><span aria-hidden="true">&rarr;</span></button></div>
       <section className="activity-summary" aria-label="Study activity"><div><h3>Activity</h3><span>{streakLength(studyDays)}-day streak</span></div><div className="streak-days" aria-label="Study activity over the last seven days">{recentDays().map(day => <span key={day} className={studyDays.includes(day) ? 'streak-day active' : 'streak-day'} title={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`} aria-label={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`}>{Number(day.slice(-2))}</span>)}</div></section>
     </section>}
-    {tab === 'Connect' && <Connect key={account?.user.id ?? 'guest'} account={account} onSignIn={() => navigate('Profile')} onImport={text => { setNotes(previous => previous ? `${previous}\n\n${text}` : text); setNoteName('Imported material'); navigate('Notes') }} />}
+    {tab === 'Connect' && <Connect key={account?.user.id ?? 'guest'} account={account} onSignIn={() => navigate('Profile')} onImport={text => { setNotes(appendMaterial(notes, text)); setNoteName('Imported material'); navigate('Notes') }} />}
     {tab === 'Cards' && <Flashcards key={notes} notes={notes} onNotes={() => navigate('Notes')} />}
     {tab === 'Profile' && <Profile account={account} syncStatus={syncStatus} onAuthenticated={authenticate} onSave={saveNow} onSignOut={signOut} />}
     <div hidden={tab !== 'Focus'}><FocusTimer key={account?.user.id ?? 'guest'} onComplete={recordStudyDay} /></div>

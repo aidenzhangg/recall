@@ -20,7 +20,7 @@ public class ConnectController {
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Pair> pairs = new HashMap<>();
     private final Map<String, Photo> photos = new LinkedHashMap<>();
-    private record Pair(String owner, Instant expires) {}
+    private record Pair(String owner, String sessionHash, Instant expires) {}
     private record Photo(String id, String owner, byte[] bytes, String type, String notes, Instant expires) {}
     public record Pairing(String code, Instant expiresAt) {}
     public record Item(String id, String mediaType, String notes, Instant expiresAt) {}
@@ -28,10 +28,10 @@ public class ConnectController {
     public ConnectController(AccountStore accounts) { this(accounts, Clock.systemUTC()); }
     ConnectController(AccountStore accounts, Clock clock) { this.accounts = accounts; this.clock = clock; }
     @ModelAttribute void noCache(jakarta.servlet.http.HttpServletResponse response) { response.setHeader("Cache-Control", "no-store"); }
-    private String owner(String authorization) throws IOException { return accounts.workspace(AccountController.token(authorization)).user().id(); }
+    private String owner(String authorization) throws IOException { return accounts.sessionOwner(AccountController.token(authorization)); }
     private void clean() {
         var now = clock.instant();
-        pairs.values().removeIf(p -> !p.expires().isAfter(now));
+        pairs.values().removeIf(p -> !p.expires().isAfter(now) || !accounts.sessionActive(p.sessionHash()));
         photos.values().removeIf(p -> !p.expires().isAfter(now));
     }
     private String hash(String code) {
@@ -46,8 +46,13 @@ public class ConnectController {
         byte[] bytes = new byte[18]; random.nextBytes(bytes);
         String code = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         var expiry = clock.instant().plusSeconds(300);
-        pairs.put(hash(code), new Pair(owner, expiry));
+        pairs.put(hash(code), new Pair(owner, hash(AccountController.token(auth)), expiry));
         return new Pairing(code, expiry);
+    }
+    @DeleteMapping("/pair")
+    public synchronized void cancel(@RequestHeader(value="Authorization", defaultValue="") String auth) throws IOException {
+        String owner = owner(auth);
+        pairs.values().removeIf(p -> p.owner().equals(owner));
     }
     @PostMapping(value="/upload", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
     public synchronized Map<String, String> upload(@RequestHeader(value="X-Recall-Pair", defaultValue="") String code,

@@ -59,9 +59,9 @@ Profiles use separate account stores. Existing file accounts are not automatical
 2. Enter the address of this same backend that your phone can reach. For local tests, both devices must be on the same trusted Wi-Fi and the address must use your computer's LAN IP, not localhost. Windows Firewall must allow the backend on that trusted network.
 3. Generate a pairing and scan its QR code with the phone's camera. The link opens a browser page; no app or Shortcut is required.
 4. Send one JPEG/PNG under 5 MB. You may also type/paste text from the photo.
-5. Refresh Recall's inbox. Open the photo, review or transcribe the text, and select **Import text to notes**.
+5. Refresh Recall's inbox. Open the photo, review or transcribe the text, and select **Import text to notes**. Imports that would exceed the 200,000-character notes limit are rejected without changing your notes.
 
-Pairing expires in five minutes and allows one upload. Generating a new pairing invalidates the previous one. Photos expire after an hour, can be deleted, and are cleared on restart. The inbox is limited to five photos per account and 50 MB globally. Images are decoded and re-encoded to remove metadata; original filenames are not retained.
+Pairing expires in five minutes and allows one upload. Generating a new pairing invalidates the previous one. You can cancel a pending pairing in Connect; signing out of the session that created it also revokes it. Photos expire after an hour, can be deleted, and are cleared on restart. The inbox is limited to five photos per account and 50 MB globally. Images are decoded and re-encoded to remove metadata; original filenames are not retained.
 
 Transfer is **through the backend**, including a local backend on your laptop. It is not peer-to-peer, not an iPhone Share Sheet extension and not automatic OCR. For access beyond trusted local testing, deploy the backend behind HTTPS and configure access controls before exposing it. Do not publicly expose a development server.
 

@@ -22,7 +22,7 @@ public class AccountStore {
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Session> sessions = new HashMap<>();
     private final Map<String, Attempts> attempts = new HashMap<>();
-    private record Session(String fileKey, long expires) {}
+    private record Session(String fileKey, String userId, long expires) {}
     private record Attempts(int count, long until) {}
     public record User(String id, String name, String email) {}
     public record Login(String token, User user, String progress) {}
@@ -80,13 +80,21 @@ public class AccountStore {
         properties.setProperty("progress", progress);
         save(key, properties);
     }
+    /** Connect authentication does not need to load the potentially large progress snapshot. */
+    public synchronized String sessionOwner(String token) { return requireSession(token).userId(); }
+    synchronized boolean sessionActive(String tokenHash) {
+        Session session = sessions.get(tokenHash);
+        if (session == null) return false;
+        if (session.expires() <= System.currentTimeMillis()) { sessions.remove(tokenHash); return false; }
+        return true;
+    }
     public synchronized void logout(String token) { sessions.remove(digest(token)); }
     private Login loginResult(String key, Properties properties) {
         long now = System.currentTimeMillis();
         sessions.entrySet().removeIf(entry -> entry.getValue().expires() < now);
         byte[] bytes = new byte[32]; random.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        sessions.put(digest(token), new Session(key, now + 12 * 60 * 60 * 1000L));
+        sessions.put(digest(token), new Session(key, properties.getProperty("id"), now + 12 * 60 * 60 * 1000L));
         return new Login(token, user(properties), properties.getProperty("progress"));
     }
     private Session requireSession(String token) {

@@ -51,4 +51,31 @@ class ConnectControllerTests {
         var fresh = connect.pair(auth); connect.upload(fresh.code(), image(), "");
         clock.now = clock.now.plusSeconds(3601); assertThat(connect.inbox(auth)).isEmpty();
     }
+    @Test void logoutRevokesPairingButAnotherAccountsLogoutDoesNot() throws Exception {
+        var accounts = new AccountStore(directory.toString());
+        var first = accounts.register("One", "logout-one@example.test", "Synthetic-pass-123");
+        var second = accounts.register("Two", "logout-two@example.test", "Synthetic-pass-456");
+        var connect = new ConnectController(accounts);
+        var firstPair = connect.pair("Bearer " + first.token());
+        var secondPair = connect.pair("Bearer " + second.token());
+        accounts.logout(first.token());
+        assertThatThrownBy(() -> connect.upload(firstPair.code(), image(), ""))
+            .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(401));
+        connect.upload(secondPair.code(), image(), "still valid");
+        assertThat(connect.inbox("Bearer " + second.token())).hasSize(1);
+    }
+    @Test void cancellingAndReplacingPairingAreOwnerScoped() throws Exception {
+        var accounts = new AccountStore(directory.toString());
+        String first = "Bearer " + accounts.register("One", "cancel-one@example.test", "Synthetic-pass-123").token();
+        String second = "Bearer " + accounts.register("Two", "cancel-two@example.test", "Synthetic-pass-456").token();
+        var connect = new ConnectController(accounts);
+        var old = connect.pair(first); var fresh = connect.pair(first);
+        assertThatThrownBy(() -> connect.upload(old.code(), image(), "")).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        connect.cancel(second);
+        connect.upload(fresh.code(), image(), "valid");
+        var cancelled = connect.pair(first); connect.cancel(first);
+        assertThatThrownBy(() -> connect.upload(cancelled.code(), image(), "")).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThat(connect.inbox(first)).hasSize(1);
+        assertThatThrownBy(() -> connect.cancel("")).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+    }
 }
