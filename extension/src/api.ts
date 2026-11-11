@@ -28,8 +28,8 @@ export async function requestHint(question: string, message: string): Promise<{ 
   return data
 }
 
-export async function requestQuiz(notes: string, count: number, format: QuizFormat, history: ReviewItem[]): Promise<Question[]> {
-  const response = await fetch(`${API_BASE}/study/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({notes, count, format, history}), signal: AbortSignal.timeout(8000) })
+export async function requestQuiz(notes: string, count: number, format: QuizFormat, history: ReviewItem[], focus = ''): Promise<Question[]> {
+  const response = await fetch(`${API_BASE}/study/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({notes, count, format, history, focus}), signal: AbortSignal.timeout(8000) })
   if (!response.ok) throw new Error('Quiz service unavailable')
   const data: unknown = await response.json()
   if (!Array.isArray(data) || data.length > 15 || !data.every(q => q && typeof q.prompt === 'string' && typeof q.answer === 'string' && typeof q.source === 'string' && typeof q.topic === 'string' && ['blank','choice','long'].includes(q.kind) && (q.kind !== 'choice' || (Array.isArray(q.options) && q.options.length >= 2 && q.options.length <= 4 && q.options.every((option: unknown) => typeof option === 'string') && new Set(q.options).size === q.options.length && q.options.includes(q.answer))))) throw new Error('Invalid quiz response')

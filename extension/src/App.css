@@ -330,3 +330,6 @@ textarea, select, .question input { font-size: 14px; }
 .import-report { grid-column: 1 / -1; display: grid; gap: 10px; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .import-report summary { color: var(--danger); cursor: pointer; min-height: 44px; padding-block: 10px; }
 .import-report ul { padding-left: 18px; display: grid; gap: 8px; }
+
+.focus-topic { display: grid; gap: 8px; font-size: 12px; }
+.focus-topic input { width: 100%; min-width: 0; min-height: 46px; border: 1px solid var(--rule); border-radius: 3px; padding: 12px; color: var(--ink); background: var(--field-bg); font: inherit; }

@@ -45,3 +45,39 @@ test('PDF line wrapping keeps body sentences and skips a title and page numbers'
  const broken = makeQuestions('Photo-\nsynthesis converts light into chemical energy.',1,'blank')
  assert.equal(broken[0].source,'Photosynthesis converts light into chemical energy.')
 })
+
+const lecture = `Introduction To The Biology Of Plants
+Professor: Alex Example
+The assignment is worth thirty percent of your grade.
+Office hours are available every Wednesday afternoon.
+Please upload the assignment by Friday evening.
+Copyright 2026 University Lecture Resources. All rights reserved.
+Lecture slides are posted after each class.
+This is an extraordinarily complicated introductory presentation.
+Photosynthesis converts sunlight into stored chemical energy.
+Mitochondria release energy through cellular respiration.
+Homeostasis is the regulation of stable internal conditions.
+Diffusion: particles move from high concentration to low concentration.`
+test('lecture logistics never become questions or multiple-choice distractors', () => {
+ const questions = makeQuestions(lecture,15,'choice')
+ assert.equal(questions.length,4)
+ assert.ok(questions.every(q=>!/(office|professor|assignment|copyright|slides|extraordinarily)/i.test(q.source)))
+ assert.ok(questions.flatMap(q=>q.options ?? []).every(option=>['Photosynthesis','Mitochondria','Homeostasis','Diffusion'].includes(option)))
+ assert.equal(questions[0].answer,'Homeostasis')
+})
+test('concept subjects replace longest-word guessing and definitions rank first', () => {
+ const [q] = makeQuestions('Mitochondria release extraordinarily substantial amounts of energy.',1,'blank')
+ assert.equal(q.answer,'Mitochondria')
+ assert.ok(q.prompt.startsWith('________ release'))
+ const [definition] = makeQuestions(lecture,1,'blank')
+ assert.equal(definition.answer,'Homeostasis')
+})
+test('focus limits both new and adaptive questions without filling with unrelated facts', () => {
+ const selected = makeQuestions(lecture,10,'blank','respiration')
+ assert.equal(selected.length,1)
+ assert.equal(selected[0].answer,'Mitochondria')
+ assert.deepEqual(makeQuestions(lecture,10,'blank','quantum physics'),[])
+ const history=[{source:'Homeostasis is the regulation of stable internal conditions.',topic:'Homeostasis',misses:8,successes:0,dueAt:0}]
+ assert.equal(adaptiveQuestions(lecture,5,'blank',history,1000,'respiration')[0].answer,'Mitochondria')
+ assert.deepEqual(makeQuestions('Office hours are every Wednesday afternoon.',5,'mixed'),[])
+})

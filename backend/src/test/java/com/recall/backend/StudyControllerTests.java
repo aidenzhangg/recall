@@ -31,4 +31,19 @@ class StudyControllerTests {
         assertThat(questions).noneSatisfy(q -> assertThat(q.source()).contains("Introduction", "Page 1"));
         assertThat(StudyPassages.split("Photo-\nsynthesis converts light into chemical energy.")).containsExactly("Photosynthesis converts light into chemical energy.");
     }
+
+    @Test void filtersLectureLogisticsRanksConceptsAndHonorsFocus() {
+        String lecture = "Professor: Alex Example\nThe assignment is worth thirty percent of your grade.\nOffice hours are every Wednesday afternoon.\nPlease upload the assignment by Friday evening.\nCopyright 2026 University Lecture Resources. All rights reserved.\nLecture slides are posted after each class.\nThis is an extraordinarily complicated introductory presentation.\nPhotosynthesis converts sunlight into stored chemical energy.\nMitochondria release energy through cellular respiration.\nHomeostasis is the regulation of stable internal conditions.\nDiffusion: particles move from high concentration to low concentration.";
+        var questions = StudyController.generateAt(new StudyController.Generation(lecture, 15, "choice", List.of()), 1000);
+        assertThat(questions).hasSize(4);
+        assertThat(questions.getFirst().answer()).isEqualTo("Homeostasis");
+        assertThat(questions).extracting(StudyController.Question::topic).containsExactlyInAnyOrder("Photosynthesis", "Mitochondria", "Homeostasis", "Diffusion");
+        assertThat(questions).allSatisfy(q -> assertThat(q.options()).allSatisfy(option -> assertThat(option).isIn("Photosynthesis", "Mitochondria", "Homeostasis", "Diffusion")));
+        var focused = StudyController.generateAt(new StudyController.Generation(lecture, 10, "blank", List.of(), "respiration"), 1000);
+        assertThat(focused).hasSize(1);
+        assertThat(focused.getFirst().answer()).isEqualTo("Mitochondria");
+        assertThat(StudyController.generateAt(new StudyController.Generation(lecture, 10, "blank", List.of(), "quantum physics"), 1000)).isEmpty();
+        assertThat(StudyController.generateAt(new StudyController.Generation("Office hours are every Wednesday afternoon.", 10, "blank", List.of()), 1000)).isEmpty();
+        assertThat(StudyController.generateAt(new StudyController.Generation("Mitochondria release extraordinarily substantial amounts of energy.", 1, "blank", List.of()), 1000).getFirst().answer()).isEqualTo("Mitochondria");
+    }
 }

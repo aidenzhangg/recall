@@ -49,6 +49,7 @@ function App() {
   const [generating, setGenerating] = useState(false)
   const [quizOrigin, setQuizOrigin] = useState('')
   const [count, setCount] = useState(5)
+  const [focusTopic, setFocusTopic] = useState('')
   const [review, setReview] = useState<ReviewItem[]>([])
   const [adaptive, setAdaptive] = useState(true)
   const [format, setFormat] = useState<QuizFormat>('blank')
@@ -129,7 +130,7 @@ function App() {
       if (text.length > 200000) { setError('Use material under 200,000 characters.'); return }
       if (!text.trim()) { setError('No readable text found in this file.'); return }
       generationId.current++; setGenerating(false)
-      setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0); setReview([]); setQuizOrigin('')
+      setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0); setReview([]); setQuizOrigin(''); setFocusTopic('')
       setNotes(text); setNoteName(file.name)
       setImportReport(pdf ? { name: file.name, pages: pdf.pageCount, warnings: pdf.warnings } : null)
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not import the file.') }
@@ -141,10 +142,10 @@ function App() {
     setGenerating(true); setError('')
     try {
       let next: Question[]
-      try { next = await requestQuiz(notes, count, format, adaptive ? review : []); setQuizOrigin('Backend practice') }
-      catch { next = adaptive ? adaptiveQuestions(notes, count, format, review) : makeQuestions(notes, count, format); setQuizOrigin('Local practice - backend unavailable') }
+      try { next = await requestQuiz(notes, count, format, adaptive ? review : [], focusTopic); setQuizOrigin('Backend practice') }
+      catch { next = adaptive ? adaptiveQuestions(notes, count, format, review, Date.now(), focusTopic) : makeQuestions(notes, count, format, focusTopic); setQuizOrigin('Local practice - backend unavailable') }
       if (id !== generationId.current) return
-      if (!next.length) { setError('Add complete sentences with at least five words to create a quiz.'); return }
+      if (!next.length) { setError('No clear definitions or explanations matched. Try another focus topic or select the relevant lecture text in Notes.'); return }
       setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false)
       setQuestionIndex(0); setTab('Practice')
     } finally { if (id === generationId.current) setGenerating(false) }
@@ -192,7 +193,7 @@ function App() {
     </section>}
     {tab === 'Practice' && <section className="content" aria-labelledby="practice-title">
       <div className="page-heading"><h2 id="practice-title">{questions.length ? 'Practice session' : 'New quiz'}</h2></div>
-      {!questions.length ? <><div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><p className="muted">Quiz generation processes these notes on your Recall backend. No model request is made.</p><label className="adaptive-control"><input type="checkbox" checked={adaptive} onChange={e => setAdaptive(e.target.checked)} /><span>Prioritize topics I missed</span></label><p className="muted">{review.filter(item => item.misses > item.successes).length} topics need practice. Written answers use self-review.</p><button className="primary" disabled={!notes.trim() || generating} onClick={() => void generate()}>{generating ? 'Preparing...' : 'Start practice'} </button></> : <>
+      {!questions.length ? <><div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><label className="focus-topic">Focus topic (optional)<input type="text" maxLength={200} value={focusTopic} onChange={e => setFocusTopic(e.target.value)} placeholder="e.g. cellular respiration" /></label><p className="muted">Uses definitions and explanations; skips course logistics. Enter a topic to narrow the lecture material. No AI.</p><label className="adaptive-control"><input type="checkbox" checked={adaptive} onChange={e => setAdaptive(e.target.checked)} /><span>Prioritize topics I missed</span></label><p className="muted">{review.filter(item => item.misses > item.successes).length} topics need practice. Written answers use self-review.</p><button className="primary" disabled={!notes.trim() || generating} onClick={() => void generate()}>{generating ? 'Preparing...' : 'Start practice'} </button></> : <>
         <p className="muted" role="status">{quizOrigin}</p><div className="quiz-progress"><div><span>Question {questionIndex + 1} of {questions.length}</span><span>{answered} answered</span></div><progress value={answered} max={questions.length} aria-label="Questions answered" /></div>
         <div className="question"><label id="question-prompt" htmlFor={`answer-${questionIndex}`}>{question.prompt}</label>
           {question.kind === 'choice' ? <fieldset className="choice-options" aria-labelledby="question-prompt"><legend className="visually-hidden">Choose an answer</legend>{question.options?.map(option => <label key={option}><input type="radio" name={`answer-${questionIndex}`} value={option} checked={answers[questionIndex] === option} disabled={submitted} onChange={() => setAnswers(previous => previous.map((a, i) => i === questionIndex ? option : a))} /><span>{option}</span></label>)}</fieldset>

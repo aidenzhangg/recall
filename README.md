@@ -5,7 +5,7 @@ A Chrome side-panel workspace for studying your own notes and course materials. 
 ## What works
 
 - Import TXT/Markdown or selectable-text PDFs, including past papers. PDF extraction uses the Java backend, orders text by page position and reports page/word counts and missing-text warnings. Scanned PDFs need OCR and are not supported yet.
-- Create fill-in-the-blank, multiple-choice, long-answer or mixed practice. Wrapped PDF body lines are joined before question generation, title-like headings and page numbers are skipped, and new quizzes sample across the document. The Spring Boot endpoint prioritizes previously missed material; the extension has a local fallback.
+- Create fill-in-the-blank, multiple-choice, long-answer or mixed practice. Wrapped PDF body lines are joined before question generation, title-like headings and page numbers are skipped, and questions are selected from definitions and concept explanations rather than arbitrary long words. Administrative lines are filtered, and the optional Focus topic limits what is included. Fewer questions are returned when there is insufficient matching content. The Spring Boot endpoint prioritizes previously missed material; the extension has a local fallback.
 - Track misses and successful attempts per source passage, schedule later review after correct responses, retry answers and save history with account progress. This is a rule-based review scheduler, not a trained adaptive ML model.
 - Block distracting domains and their subdomains from **Block sites**. The on/off control and domain list stay on this browser profile; blocking uses Chrome rules without recording browsing history. Existing pages are not closed.
 - Use flashcards, a deadline-based focus timer, and built-in study hints. Long answers are explicitly self-reviewed.
@@ -76,7 +76,7 @@ Quiz generation sends the provided notes and review history to your Recall backe
 
 Pairing capabilities are kept in URL fragments on the phone link, removed from its address bar after loading, and sent in a header rather than a query string. The server retains a hash of the capability. Keep pairing links private. Uploads are accessible only through the paired account's authenticated inbox. Validation errors return generic messages instead of echoing rejected values.
 
-Gaze estimation, webcam capture, trained attention models, automated image transcription, semantic grading, external learning-resource recommendations and direct device-to-device sharing remain planned. A timer does not measure attention. Locally generated questions use deterministic text heuristics and may need editing of the source material to be useful; imported past papers are not automatically reconstructed into exam marking schemes.
+Gaze estimation, webcam capture, trained attention models, automated image transcription, semantic grading, external learning-resource recommendations and direct device-to-device sharing remain planned. A timer does not measure attention. Locally generated questions use conservative English-language text patterns, not semantic understanding or knowledge of your exam syllabus. They can miss equations, unusual sentence structures and important details; review the extracted material and use Focus topic or edit the source text to narrow scope; imported past papers are not automatically reconstructed into exam marking schemes.
 
 ## Checks
 

@@ -13,7 +13,7 @@ final class StudyPassages {
         for (String raw : normalized.split("\n", -1)) {
             String line = raw.trim().replaceAll("^[\u2022\u25cf\u25aa]\\s*", "");
             boolean heading = isHeading(line);
-            if (line.isBlank() || heading || line.matches("(?:Page\\s+)?[0-9]+(?:\\s+(?:of|/)\\s+[0-9]+)?")) {
+            if (line.isBlank() || isLogistics(line) || heading || line.matches("(?:Page\\s+)?[0-9]+(?:\\s+(?:of|/)\\s+[0-9]+)?")) {
                 if (!current.isEmpty()) { paragraphs.add(current.toString()); current.setLength(0); }
                 continue;
             }
@@ -30,6 +30,11 @@ final class StudyPassages {
             if (clean.split(" ").length >= 5 && clean.length() <= 20000) result.add(clean);
         }
         return new ArrayList<>(result);
+    }
+    static boolean isLogistics(String line) {
+        return line.matches("(?i)^(?:the |an? )?(?:assignment|assessment|exam|midterm|final exam|grading|marks|syllabus|schedule)\\b.*(?:due|worth|percent|%|scheduled|held|room|submit|grade|deadline).*" )
+            || line.matches("(?i).*(?:office hours|all rights reserved|copyright|contact (?:me|us|the instructor)|assignment (?:deadline|due)|submission deadline|course (?:code|outline|syllabus)|lecture slides (?:are|will)|slides (?:are|will be) (?:available|posted)|download (?:the|these) slides|next lecture (?:is|will)|attendance (?:is|will)|email (?:me|the instructor)|please (?:submit|upload|bring)|due (?:date|on)|instructor:|professor:|lecturer:).*" )
+            || line.matches("(?i)^(?:https?://|www\\.).*") || line.matches(".*[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}.*");
     }
     private static boolean isHeading(String line) {
         if (line.isBlank() || line.matches(".*[.!?:;].*")) return false;

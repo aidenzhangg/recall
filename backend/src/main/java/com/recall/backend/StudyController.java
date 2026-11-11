@@ -10,9 +10,10 @@ import org.springframework.web.bind.annotation.*;
 public class StudyController {
     public record Review(@NotBlank @Size(max=20000) String source, @Min(0) int misses, @Min(0) int successes, long dueAt) {}
     public record Generation(@NotBlank @Size(max=200000) String notes, @Min(1) @Max(15) int count,
-        @Pattern(regexp="blank|choice|long|mixed") @NotNull String format, @NotNull @Size(max=250) List<@Valid Review> history) {}
+        @Pattern(regexp="blank|choice|long|mixed") @NotNull String format, @NotNull @Size(max=250) List<@Valid Review> history, @Size(max=200) String focus) {
+        public Generation(String notes, int count, String format, List<Review> history) { this(notes, count, format, history, null); }
+    }
     public record Question(String prompt, String answer, String kind, List<String> options, String source, String topic) {}
-    private static final java.util.regex.Pattern WORD = java.util.regex.Pattern.compile("[A-Za-z][A-Za-z'-]{3,}");
     @PostMapping("/generate")
     public List<Question> generate(@Valid @RequestBody Generation request) {
         return generateAt(request, System.currentTimeMillis());
@@ -22,23 +23,15 @@ public class StudyController {
         for (var item : request.history()) {
             priorities.put(item.source(), item.dueAt() <= now ? 10L + item.misses() - item.successes() : 0L);
         }
-        var sources = new ArrayList<>(StudyPassages.split(request.notes()));
-        sources.sort(Comparator.comparingLong((String source) -> priorities.getOrDefault(source, 0L)).reversed());
+        var candidates = StudyContent.candidates(request.notes(), request.focus());
         var pool = new LinkedHashMap<String,String>();
-        WORD.matcher(request.notes()).results().forEach(m -> pool.putIfAbsent(m.group().toLowerCase(Locale.ROOT), m.group()));
+        for (var item : candidates) pool.putIfAbsent(item.term().toLowerCase(Locale.ROOT), item.term());
         var questions = new ArrayList<Question>();
-        boolean hasDue = sources.stream().anyMatch(source -> priorities.getOrDefault(source, 0L) > 0);
-        List<String> selected = sources;
-        if (!hasDue && sources.size() > request.count()) {
-            selected = new ArrayList<>();
-            for (int i = 0; i < request.count(); i++) selected.add(sources.get((int) Math.floor(i * (sources.size() - 1.0) / Math.max(1, request.count() - 1))));
-        }
-        for (String source : selected) {
-            if (questions.size() >= request.count()) break;
-            String term = WORD.matcher(source).results().map(m -> m.group()).max(Comparator.comparingInt(String::length)).orElse(null);
-            if (term == null) continue;
+        for (var item : StudyContent.select(candidates, request.count(), priorities)) {
+            String source = item.source();
+            String term = item.term();
             String kind = request.format().equals("mixed") ? List.of("blank", "choice", "long").get(questions.size() % 3) : request.format();
-            String prompt = java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(term), java.util.regex.Pattern.CASE_INSENSITIVE).matcher(source).replaceAll("________");
+            String prompt = java.util.regex.Pattern.compile("(?<![A-Za-z])" + java.util.regex.Pattern.quote(term) + "(?![A-Za-z])", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(source).replaceAll("________");
             var options = new ArrayList<String>();
             if (kind.equals("long")) { questions.add(new Question("Explain the role of \"" + term + "\" in this part of your notes.", source, kind, List.of(), source, term)); continue; }
             if (kind.equals("choice")) {
