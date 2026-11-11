@@ -32,7 +32,8 @@ final class StudyPassages {
         return new ArrayList<>(result);
     }
     static boolean isLogistics(String line) {
-        return line.matches("(?i)^(?:title|topic|section|unit|lecture(?:\\s+[0-9]+)?|chapter(?:\\s+[0-9]+)?)\\s*:.*")
+        return line.matches("(?i)^(?:ECE|EE|CS|CPSC|COMP|MATH|PHYS|CHEM|BIOL|MECH|CIVIL|ENG|ECON|PSYCH)\\s*-?\\s*[0-9]{2,4}[A-Z]?\\b.*")
+            || line.matches("(?i)^(?:title|topic|section|unit|lecture(?:\\s+[0-9]+)?|chapter(?:\\s+[0-9]+)?)\\s*:.*")
             || line.matches("(?i)^(?:the |an? )?(?:assignment|assessment|exam|midterm|final exam|grading|marks|syllabus|schedule)\\b.*(?:due|worth|percent|%|scheduled|held|room|submit|grade|deadline).*" )
             || line.matches("(?i).*(?:office hours|all rights reserved|copyright|contact (?:me|us|the instructor)|assignment (?:deadline|due)|submission deadline|course (?:code|outline|syllabus)|lecture slides (?:are|will)|slides (?:are|will be) (?:available|posted)|download (?:the|these) slides|next lecture (?:is|will)|attendance (?:is|will)|email (?:me|the instructor)|please (?:submit|upload|bring)|due (?:date|on)|instructor:|professor:|lecturer:).*" )
             || line.matches("(?i)^(?:https?://|www\\.).*") || line.matches(".*[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}.*");

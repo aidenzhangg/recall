@@ -59,4 +59,15 @@ class StudyControllerTests {
         assertThat(StudyController.generateAt(new StudyController.Generation("Homeostasis:\nregulation of stable internal conditions.", 1, "blank", List.of()), 1000).getFirst().answer()).isEqualTo("Homeostasis");
         assertThat(StudyController.generateAt(new StudyController.Generation("Cell Biology", 5, "blank", List.of()), 1000)).isEmpty();
     }
+
+    @Test void eceCourseHeadingsCannotBecomeQuestionsOrDistractors() {
+        String notes = "ECE 150 Fundamentals of Programming\nis taught in the first semester of engineering.\nVariables are named storage locations for program values.\nFunctions are reusable blocks of program instructions.";
+        var questions = StudyController.generateAt(new StudyController.Generation(notes, 10, "choice", List.of()), 1000);
+        assertThat(questions).extracting(StudyController.Question::answer).containsExactly("Variables", "Functions");
+        assertThat(questions).allSatisfy(q -> {
+            assertThat(q.source()).doesNotContain("ECE", "semester", "Fundamentals");
+            assertThat(q.options()).containsOnly("Variables", "Functions");
+        });
+        assertThat(StudyController.generateAt(new StudyController.Generation("ECE150 Fundamentals of Programming is a first year engineering course.", 5, "blank", List.of()), 1000)).isEmpty();
+    }
 }

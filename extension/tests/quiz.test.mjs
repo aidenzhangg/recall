@@ -98,3 +98,13 @@ test('independent facts without periods remain separate and wrapped subjects sur
  assert.equal(makeQuestions('Homeostasis:\nregulation of stable internal conditions.',1,'blank')[0].answer,'Homeostasis')
  assert.deepEqual(makeQuestions('Cell Biology',5,'blank'),[])
 })
+
+test('ECE course labels cannot become quiz subjects or distractors', () => {
+ const notes = 'ECE 150 Fundamentals of Programming\nis taught in the first semester of engineering.\nVariables are named storage locations for program values.\nFunctions are reusable blocks of program instructions.'
+ const questions = makeQuestions(notes,10,'choice')
+ assert.equal(questions.length,2)
+ assert.deepEqual(questions.map(q=>q.answer),['Variables','Functions'])
+ assert.ok(questions.every(q=>!/(ECE|semester|fundamentals)/i.test(q.source)))
+ assert.ok(questions.flatMap(q=>q.options ?? []).every(option=>['Variables','Functions'].includes(option)))
+ assert.deepEqual(makeQuestions('ECE150 Fundamentals of Programming is a first year engineering course.',5,'blank'),[])
+})
