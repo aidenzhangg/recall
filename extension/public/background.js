@@ -1,3 +1,6 @@
+import { installBlocker } from './blocker.js';
+installBlocker(chrome);
+
 // Keep opening the panel inside the toolbar click's user gesture.
 chrome.action.onClicked.addListener((tab) => {
   if (tab.windowId === undefined) return;

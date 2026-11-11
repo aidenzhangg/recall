@@ -7,6 +7,7 @@ A Chrome side-panel workspace for studying your own notes and course materials. 
 - Import TXT/Markdown or selectable-text PDFs, including past papers. PDF extraction uses the Java backend; scanned PDFs need OCR and are not supported yet.
 - Create fill-in-the-blank, multiple-choice, long-answer or mixed practice. The Spring Boot endpoint prioritizes previously missed material; the extension has a local fallback.
 - Track misses and successful attempts per source passage, schedule later review after correct responses, retry answers and save history with account progress. This is a rule-based review scheduler, not a trained adaptive ML model.
+- Block distracting domains and their subdomains from **Block sites**. The on/off control and domain list stay on this browser profile; blocking uses Chrome rules without recording browsing history. Existing pages are not closed.
 - Use flashcards, a deadline-based focus timer, and a hint-only Recall AI tutor. Long answers are explicitly self-reviewed.
 - Register/sign in to save progress. Local file storage is the default; a PostgreSQL profile is available.
 - Pair a phone from Connect using a locally generated QR code. Open the browser upload page without installing an app, send a JPEG/PNG, then refresh the desktop inbox to review/transcribe and import its text.
@@ -98,3 +99,6 @@ Shared React state, async cancellation, runtime validation, Java request validat
 ## Design reference
 
 The earlier layout was inspired by [Aspira](https://wabtech.gumroad.com/l/aspira). The current interface is a compact desktop-utility interpretation with project-specific components and interactions.
+
+### Website blocking
+After installing or updating, reload Recall at chrome://extensions and approve the added storage/request-blocking permissions if Chrome asks. Open **Block sites**, add a domain (for example, youtube.com), then turn **Blocking on**. Remove entries or turn blocking off to allow them again. Rules persist across browser restarts and apply to new page loads in this Chrome profile; they do not close existing tabs, block other browsers or restrict Chrome internal pages. Chrome displays its native blocked-request page. The list is local to the device, not tied to an account or sent to the server. You can save up to 100 domains. URL paths and query strings are stripped; local addresses and IP addresses are rejected. This is a voluntary study aid, not tamper-proof parental control.

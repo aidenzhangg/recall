@@ -295,3 +295,16 @@ textarea, select, .question input { font-size: 14px; }
 @media (min-width: 700px) { .panel { grid-template-columns: 158px minmax(0, 1fr); column-gap: 28px; padding-inline: 24px; } .session-overview { padding: 0 0 24px; } .session-stats dd { font-size: 24px; } .dashboard-links { gap: 24px; } .workspace { padding-block: 30px; } }
 
 .pairing-qr { width: 180px; height: 180px; max-width: 100%; image-rendering: pixelated; }
+
+.blocking-switch { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; border-bottom: 1px solid var(--rule); padding-bottom: 14px; font-size: 14px; }
+.blocking-switch input { width: 42px; height: 24px; accent-color: var(--accent); cursor: pointer; }
+.blocked-site-form { display: grid; gap: 12px; }
+.blocked-site-form label { font-size: 12px; }
+.blocked-site-form input { width: 100%; min-width: 0; padding: 12px; min-height: 46px; border: 1px solid var(--rule); border-radius: 3px; color: var(--ink); background: var(--field-bg); font: 13px var(--font-mono); }
+.blocked-list-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.blocked-list-heading h3 { font-size: 15px; }
+.blocked-list-heading > span { font: 10px var(--font-mono); color: var(--muted); }
+.blocked-site-list { list-style: none; padding: 0; margin: 0; }
+.blocked-site-list:empty { display: none; }
+.blocked-site-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--rule); }
+.blocked-site-list li > span { min-width: 0; overflow-wrap: anywhere; font: 12px var(--font-mono); }
