@@ -38,7 +38,14 @@ export async function requestQuiz(notes: string, count: number, format: QuizForm
 
 export async function extractPdf(file: File): Promise<string> {
   const body = new FormData(); body.append('file', file)
-  const response = await fetch(`${API_BASE}/material/extract`, {method:'POST', body, signal:AbortSignal.timeout(30000)})
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}/material/extract`, {method:'POST', body, signal:AbortSignal.timeout(30000)})
+  } catch (error) {
+    if (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name))
+      throw new Error('PDF import timed out. Try a smaller PDF or retry once the backend is ready.', { cause: error })
+    throw new Error('Cannot reach the Recall backend. Start the Java server, then click Check connection and retry the import.', { cause: error })
+  }
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(typeof data.message === 'string' ? data.message : 'PDF import failed. Start the backend and try a text-based PDF up to 20 MB.')
   if (typeof data.text !== 'string' || data.text.length > 200000) throw new Error('Invalid extracted text')
