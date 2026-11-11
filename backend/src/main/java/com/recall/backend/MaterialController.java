@@ -16,7 +16,7 @@ public class MaterialController {
     @PostMapping(value="/extract", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String,String> extract(@RequestPart("file") MultipartFile file) {
         try {
-            if (file.isEmpty() || file.getSize() > 5 * 1024 * 1024) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a PDF under 5 MB.");
+            if (file.isEmpty() || file.getSize() > 20 * 1024 * 1024) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a PDF up to 20 MB.");
             byte[] bytes = file.getBytes();
             if (bytes.length < 5 || !Arrays.equals(Arrays.copyOf(bytes, 5), new byte[]{37,80,68,70,45})) throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Choose a PDF file.");
             try (var document = Loader.loadPDF(bytes)) {

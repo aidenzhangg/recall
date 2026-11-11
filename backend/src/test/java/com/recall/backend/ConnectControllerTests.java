@@ -78,4 +78,18 @@ class ConnectControllerTests {
         assertThat(connect.inbox(first)).hasSize(1);
         assertThatThrownBy(() -> connect.cancel("")).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
     }
+    @Test void acceptsTwentyMegabytePhotoAndRejectsAnythingLarger() throws Exception {
+        var accounts = new AccountStore(directory.toString());
+        String auth = "Bearer " + accounts.register("Limit", "size@example.test", "Synthetic-pass-123").token();
+        var connect = new ConnectController(accounts);
+        // A valid PNG with trailing padding exercises the real upload byte limit.
+        // Re-encoding discards the padding rather than retaining it in the inbox.
+        byte[] atLimit = java.util.Arrays.copyOf(image().getBytes(), 20 * 1024 * 1024);
+        connect.upload(connect.pair(auth).code(), new MockMultipartFile("file", "large.png", "image/png", atLimit), "");
+        assertThat(connect.inbox(auth)).hasSize(1);
+        var next = connect.pair(auth);
+        assertThatThrownBy(() -> connect.upload(next.code(), new MockMultipartFile("file", "oversized.png", "image/png", new byte[20 * 1024 * 1024 + 1]), ""))
+            .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(400));
+        assertThat(connect.inbox(auth)).hasSize(1);
+    }
 }

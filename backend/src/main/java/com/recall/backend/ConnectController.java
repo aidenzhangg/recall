@@ -59,8 +59,8 @@ public class ConnectController {
             @RequestPart("file") MultipartFile file, @RequestParam(defaultValue="") String notes) throws IOException {
         clean(); Pair pair = pairs.get(hash(code));
         if (pair == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Pairing expired or already used.");
-        if (file.isEmpty() || file.getSize() > 5 * 1024 * 1024 || notes.length() > 20000)
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Use a JPEG or PNG under 5 MB and notes under 20,000 characters.");
+        if (file.isEmpty() || file.getSize() > 20 * 1024 * 1024 || notes.length() > 20000)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Use a JPEG or PNG up to 20 MB and notes under 20,000 characters.");
         byte[] bytes = file.getBytes();
         boolean png = bytes.length > 8 && bytes[0] == (byte)137 && bytes[1] == 80 && bytes[2] == 78 && bytes[3] == 71;
         boolean jpeg = bytes.length > 3 && bytes[0] == (byte)255 && bytes[1] == (byte)216 && bytes[2] == (byte)255;
@@ -78,7 +78,7 @@ public class ConnectController {
         var sanitized = new ByteArrayOutputStream();
         ImageIO.write(decoded, png ? "png" : "jpeg", sanitized);
         bytes = sanitized.toByteArray();
-        if (bytes.length > 5 * 1024 * 1024) throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Decoded image is too large.");
+        if (bytes.length > 20 * 1024 * 1024) throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Decoded image is too large.");
         long ownerCount = photos.values().stream().filter(p -> p.owner().equals(pair.owner())).count();
         long totalBytes = photos.values().stream().mapToLong(p -> p.bytes().length).sum();
         if (ownerCount >= 5 || totalBytes + bytes.length > 50L * 1024 * 1024) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Inbox full. Remove an upload first.");

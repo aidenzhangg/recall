@@ -25,4 +25,17 @@ class MaterialControllerTests {
         assertThatThrownBy(() -> controller.extract(new MockMultipartFile("file", "fake.pdf", "application/pdf", "not-a-pdf".getBytes())))
             .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
     }
+    @Test void importsPdfLargerThanOldLimitAndRejectsMoreThanTwentyMegabytes() throws Exception {
+        var controller = new MaterialController();
+        try (var document = org.apache.pdfbox.Loader.loadPDF(pdf(true).getBytes()); var bytes = new ByteArrayOutputStream()) {
+            var padding = document.getDocument().createCOSStream();
+            try (var output = padding.createRawOutputStream()) { output.write(new byte[6 * 1024 * 1024]); }
+            document.getDocumentCatalog().getCOSObject().setItem(org.apache.pdfbox.cos.COSName.getPDFName("TestPadding"), padding);
+            document.save(bytes);
+            assertThat(bytes.size()).isGreaterThan(5 * 1024 * 1024);
+            assertThat(controller.extract(new MockMultipartFile("file", "large.pdf", "application/pdf", bytes.toByteArray())).get("text")).contains("Photosynthesis");
+        }
+        assertThatThrownBy(() -> controller.extract(new MockMultipartFile("file", "oversized.pdf", "application/pdf", new byte[20 * 1024 * 1024 + 1])))
+            .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(400));
+    }
 }

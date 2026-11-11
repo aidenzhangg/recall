@@ -118,7 +118,7 @@ function App() {
     event.target.value = ''
     if (!file) return
     setError('')
-    if (file.size > 5 * 1024 * 1024) { setError('Choose a file under 5 MB.'); return }
+    if (file.size > 20 * 1024 * 1024) { setError('Choose a file up to 20 MB.'); return }
     if (!/\.(txt|md|pdf)$/i.test(file.name)) { setError('Choose a .txt, .md or text-based PDF file.'); return }
     setImporting(true)
     try {
@@ -177,7 +177,7 @@ function App() {
     <div hidden={tab !== 'Focus'}><FocusTimer key={account?.user.id ?? 'guest'} onComplete={recordStudyDay} /></div>
     {tab === 'Notes' && <section className="content" aria-labelledby="notes-title">
       <div className="page-heading"><h2 id="notes-title">Notes</h2></div>
-      <div className="material-panel"><div className="material-heading"><NavIcon name="Notes" /><div><strong>{words ? noteName : 'Add course notes'}</strong><p>Notes or past paper / TXT, MD, PDF / 5 MB</p></div></div><input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} /><button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Importing...' : words ? 'Replace material' : 'Import material'}</button></div>
+      <div className="material-panel"><div className="material-heading"><NavIcon name="Notes" /><div><strong>{words ? noteName : 'Add course notes'}</strong><p>Notes or past paper / TXT, MD, PDF / 20 MB</p></div></div><input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} /><button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Importing...' : words ? 'Replace material' : 'Import material'}</button></div>
       <div className="editor"><div className="field-heading"><label htmlFor="notes">Paste or edit notes</label><span>{words} words</span></div><textarea id="notes" maxLength={200000} value={notes} onChange={e => { setNotes(e.target.value); setNoteName('Pasted notes') }} placeholder="Paste definitions, notes, or a topic you want to review" /></div>
       <button className="primary" disabled={!notes.trim() || importing} onClick={() => navigate('Practice')}>Set up practice </button>
     </section>}

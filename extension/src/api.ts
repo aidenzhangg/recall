@@ -40,7 +40,7 @@ export async function extractPdf(file: File): Promise<string> {
   const body = new FormData(); body.append('file', file)
   const response = await fetch(`${API_BASE}/material/extract`, {method:'POST', body, signal:AbortSignal.timeout(30000)})
   const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(typeof data.message === 'string' ? data.message : 'PDF import failed. Start the backend and try a text-based PDF under 5 MB.')
+  if (!response.ok) throw new Error(typeof data.message === 'string' ? data.message : 'PDF import failed. Start the backend and try a text-based PDF up to 20 MB.')
   if (typeof data.text !== 'string' || data.text.length > 200000) throw new Error('Invalid extracted text')
   return data.text
 }

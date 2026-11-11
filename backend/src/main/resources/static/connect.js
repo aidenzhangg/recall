@@ -6,8 +6,8 @@ document.getElementById('upload').addEventListener('submit', async event => {
   const button = document.getElementById('send');
   const status = document.getElementById('status');
   const file = document.getElementById('file').files[0];
-  if (!file || file.size > 5 * 1024 * 1024 || !['image/jpeg','image/png'].includes(file.type)) {
-    status.textContent = 'Choose a JPEG or PNG under 5 MB.'; return;
+  if (!file || file.size > 20 * 1024 * 1024 || !['image/jpeg','image/png'].includes(file.type)) {
+    status.textContent = 'Choose a JPEG or PNG up to 20 MB.'; return;
   }
   button.disabled = true; status.textContent = 'Sending...';
   const body = new FormData(); body.append('file', file); body.append('notes', document.getElementById('notes').value);
