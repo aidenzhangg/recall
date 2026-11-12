@@ -2,7 +2,7 @@
 // plain text matching - no model and no network - so replies can only quote what was imported.
 export type Resource = { label: string; url: string }
 export type TutorQuestion = { prompt: string; answer: string; kind?: string; source?: string; options?: string[] }
-export type TutorReply = { text: string; sources: string[]; resources: Resource[] }
+export type TutorReply = { text: string; sources: string[]; resources: Resource[]; /** True for a notes lookup (as opposed to a quiz hint or answer). */ lookup?: boolean }
 
 const STOP = new Set(('a an and are as at be been but by can could did do does for from had has have how i if in into is it its me my of on or our '
   + 'should so some than that the their them then there these they this those to was we were what when where which who why will with would you your '
@@ -91,7 +91,7 @@ export function tutorReply(input: { passages: string[]; message: string; questio
   }
   if (!topic) return { text: 'Ask me about something in your notes, for example "What is osmosis?" or "How does the Krebs cycle work?". Pick a quiz question above if you want a hint for it.', sources: [], resources: [] }
   const hits = searchNotes(passages, message)
-  if (hits.length) return { text: `Here is what your notes say about ${hide(topic)}:`, sources: hits.map(hide), resources: resourceLinks(topic) }
+  if (hits.length) return { text: `Here is what your notes say about ${hide(topic)}:`, sources: hits.map(hide), resources: resourceLinks(topic), lookup: true }
   if (question && hintsOn) {
     const hint = hintFor(question, passages, level)
     return { ...hint, text: `I could not find "${topic}" in your notes, so here is a hint for the question instead. ${hint.text}` }
@@ -100,6 +100,6 @@ export function tutorReply(input: { passages: string[]; message: string; questio
     text: passages.length
       ? `I could not find "${topic}" in your notes. Try a keyword that appears in them, or look it up here:`
       : `You have not added any notes yet, so I have nothing to answer from. Add notes and I will quote the relevant parts. Until then, you can look up "${topic}" here:`,
-    sources: [], resources: resourceLinks(topic),
+    sources: [], resources: resourceLinks(topic), lookup: true,
   }
 }

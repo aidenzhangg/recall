@@ -8,7 +8,8 @@ A Chrome side-panel workspace for studying your own notes and course materials. 
 - Create fill-in-the-blank, multiple-choice, long-answer or mixed practice. Wrapped PDF body lines are joined before question generation, title-like headings and page numbers are skipped, and questions are selected from definitions and concept explanations rather than arbitrary long words. Administrative lines are filtered, and the optional Focus topic limits what is included. Fewer questions are returned when there is insufficient matching content. The Spring Boot endpoint prioritizes previously missed material; the extension has a local fallback.
 - Track misses and successful attempts per source passage, schedule later review after correct responses, retry answers and save history with account progress. This is a rule-based review scheduler, not a trained adaptive ML model.
 - Block distracting domains and their subdomains from **Block sites**. The on/off control and domain list stay on this browser profile; blocking uses Chrome rules without recording browsing history. Existing pages are not closed.
-- Ask Recall AI a question and get the matching passages quoted from your own notes. With a quiz question selected and Hints Mode on it gives stepped hints (length and first letter, a related line from your notes, then a letter pattern) without revealing the answer; with Hints Mode off it shows the answer and its source line. This is local keyword search, not a language model, so it only quotes what was imported and says so when nothing matches.
+- Ask Recall AI a question and get the matching passages quoted from your own notes. With a quiz question selected and Hints Mode on it gives stepped hints (length and first letter, a related line from your notes, then a letter pattern) without revealing the answer; with Hints Mode off it shows the answer and its source line. By default this is local keyword search, so it only quotes what was imported and says so when nothing matches.
+- Optional on-device AI: where Chrome's built-in Prompt API (Gemini Nano) is available, Recall AI can use it to write a short explanation grounded in the matched note lines. It runs inside the browser with no API key, account or network call to an AI service; one click in Recall AI starts Chrome's model download. Replies that would reveal a hidden quiz answer are discarded, and answers not based on your notes are labelled as general knowledge. Without the built-in model, notes search is used.
 - See missed topics on the dashboard with a one-click targeted practice session and search links (Wikipedia, Khan Academy, YouTube, MIT OpenCourseWare) for each. The links open a search for the topic; they are not curated recommendations.
 - Practise numbered questions detected in an imported past paper, one at a time, with self-review (papers carry no answer key).
 - Use flashcards with flip, Got it / Still learning sorting and a missed-card round, plus a deadline-based focus timer. Long answers are explicitly self-reviewed. Camera gaze check-ins are planned only; nothing uses the camera.
@@ -31,6 +32,8 @@ npm run build --prefix extension
 cd backend
 .\mvnw.cmd spring-boot:run
 ```
+
+On Windows you can instead run `.\start-backend.cmd` from the repository root (or double-click it); it works from any folder. Note that `mvnw.cmd` must be run as `.\mvnw.cmd` from inside `backend`, not from the root. The backend is ready when the log shows `Started BackendApplication`.
 
 Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `extension/dist` (not `extension` or `public`). Click Recall's toolbar icon. Rebuild and reload the extension after source changes. Health check: `http://localhost:8080/api/health`.
 
