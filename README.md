@@ -70,6 +70,16 @@ The key is saved only in this browser's storage and is sent only to the provider
 
 With an AI connected: chat answers are written by the model, quiz hints explain the idea in three steps without giving the answer (the answer is shown if you ask after the third hint, or at once with Hints Mode off), quizzes and flashcards are written from your notes, and written answers get short feedback.
 
+### One shared key for everyone (optional)
+
+If you want people to use your build without getting their own key, put a key in a file Git ignores:
+
+1. Copy `extension/.env.example` to `extension/.env.local`.
+2. Set `VITE_AI_PROVIDER=groq` (or `gemini`) and paste your key after `VITE_AI_KEY=`.
+3. Run `npm run build --prefix extension` and share the `extension/dist` folder.
+
+The key is not in the repository, but it is inside the built extension, and anyone who installs that build can read it and use it elsewhere. Only use a free key with no payment method attached, expect its rate limit to be shared by everyone, and revoke it at the provider if it is abused. A key someone enters themselves in AI settings takes priority. The safe way to share a paid key is the backend option below, where the key never leaves your server.
+
 ### Camera focus
 
 Open **Focus** and switch on **Camera focus**. It works in the side panel. Chrome cannot show its camera question inside a side panel, so the first time Recall shows **Allow camera**, which opens a tab where Chrome asks once; choose Allow and camera focus turns on in the panel by itself. The first start also downloads Google's face-landmark model (a few megabytes), so it needs a connection that one time.

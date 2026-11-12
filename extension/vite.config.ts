@@ -5,7 +5,9 @@ import { defineConfig, loadEnv } from 'vite'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Building against a hosted backend (VITE_API_BASE=https://host/api) also needs permission to call that host.
-  const base = loadEnv(mode, process.cwd()).VITE_API_BASE
+  const env = loadEnv(mode, process.cwd())
+  const base = env.VITE_API_BASE
+  if (env.VITE_AI_KEY) console.warn('\nRecall: this build contains a shared AI key from .env.local. Anyone who installs it can read that key.\n')
   return {
     plugins: [react(), {
       name: 'recall-extension-assets',

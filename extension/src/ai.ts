@@ -44,6 +44,20 @@ function endpoint(settings: AiSettings): string {
   // A key must never travel over plain HTTP except to a model running on this computer.
   return /^https:\/\//.test(url) || /^http:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(url) ? url : ''
 }
+// An optional shared key, read at build time from the git-ignored extension/.env.local. It is never in the repository,
+// but it IS inside the built extension, so anyone who installs that build can read it. Use a free key you can revoke.
+const DEFAULT_MODEL: Partial<Record<Provider, string>> = { groq: 'llama-3.3-70b-versatile', gemini: 'gemini-2.5-flash' }
+function builtIn(): AiSettings | null {
+  const env = (import.meta as { env?: Record<string, string | undefined> }).env
+  const key = env?.VITE_AI_KEY?.trim()
+  if (!key) return null
+  const provider = (env?.VITE_AI_PROVIDER ?? '') in PROVIDERS ? env!.VITE_AI_PROVIDER as Provider : 'groq'
+  return { provider, key, model: env?.VITE_AI_MODEL?.trim() || DEFAULT_MODEL[provider] || '', baseUrl: env?.VITE_AI_BASE_URL?.trim() ?? '' }
+}
+/** True when this build carries a shared key, so nobody has to enter their own. */
+export function hasBuiltInKey() { const shared = builtIn(); return !!shared && keyReady(shared) }
+/** A key the user entered wins; otherwise the build's shared key, if any. */
+function resolve(settings: AiSettings): AiSettings { return keyReady(settings) ? settings : builtIn() ?? settings }
 export function keyReady(settings: AiSettings) { return !!endpoint(settings) && !!settings.model.trim() && (!!settings.key.trim() || endpoint(settings).startsWith('http://')) }
 
 type DeviceSession = { prompt(input: string, options?: { signal?: AbortSignal }): Promise<string>; destroy(): void }
@@ -52,7 +66,8 @@ function deviceApi(): DeviceApi | null {
   const candidate = (globalThis as { LanguageModel?: DeviceApi }).LanguageModel
   return candidate && typeof candidate.availability === 'function' ? candidate : null
 }
-export async function currentEngine(settings = readAiSettings()): Promise<Engine> {
+export async function currentEngine(chosen = readAiSettings()): Promise<Engine> {
+  const settings = resolve(chosen)
   if (keyReady(settings)) return { kind: 'key', label: `${PROVIDERS[settings.provider].name} · ${settings.model}`, budget: 12000 }
   try { if (await deviceApi()?.availability() === 'available') return { kind: 'device', label: 'On-device model', budget: 4500 } } catch { /* Treated as no model. */ }
   return { kind: 'none', label: 'Notes search', budget: 0 }
@@ -95,7 +110,8 @@ async function readStream(response: Response, onText: (text: string) => void): P
   }
 }
 /** `onText`, when given, receives the reply as it is written (provider keys only). */
-export async function complete(messages: ChatMessage[], settings = readAiSettings(), onText?: (text: string) => void): Promise<string> {
+export async function complete(messages: ChatMessage[], chosen = readAiSettings(), onText?: (text: string) => void): Promise<string> {
+  const settings = resolve(chosen)
   if (keyReady(settings)) {
     let response: Response
     try {
