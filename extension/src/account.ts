@@ -24,14 +24,11 @@ export function parseProgress(raw: string): SavedProgress {
     questionIndex: Math.max(0, Math.min(Number.isInteger(v.questionIndex) ? v.questionIndex : 0, v.questions.length - 1)), studyDays: [...new Set<string>(v.studyDays)].sort().slice(-366) }
 }
 const WORKSPACE = 'recall-workspace'
-/** Guest progress is kept in this browser, so Recall works with no account and no backend. */
+/** Reads a workspace an earlier version saved on this device, so it can move into the account at sign-in. Nothing is written here any more. */
 export function readLocalWorkspace(): SavedProgress | null {
   try { const raw = localStorage.getItem(WORKSPACE); return raw ? parseProgress(raw) : null } catch { return null }
 }
-export function saveLocalWorkspace(progress: SavedProgress) {
-  try { localStorage.setItem(WORKSPACE, JSON.stringify(progress)) } catch { /* Storage full or unavailable: the workspace then lasts for this session. */ }
-}
-export function clearLocalWorkspace() { try { localStorage.removeItem(WORKSPACE) } catch { /* Nothing to clear. */ } }
+export function clearLocalWorkspace() { try { localStorage.removeItem(WORKSPACE); localStorage.removeItem('recall-study-days') } catch { /* Nothing to clear. */ } }
 export function readToken(): string | null { if (cloud) return cloud.signedIn() ? 'cloud' : null; try { return sessionStorage.getItem('recall-session') } catch { return null } }
 export function rememberToken(token: string | null) { if (cloud) return; try { if (token) sessionStorage.setItem('recall-session', token); else sessionStorage.removeItem('recall-session') } catch { /* Session stays in memory. */ } }
 export async function accountRequest(path: string, body?: unknown, token?: string, signal?: AbortSignal) {

@@ -16,9 +16,3 @@ export function streakLength(days: string[], today = new Date()): number {
   while (active.has(dateKey(cursor))) { length++; cursor.setDate(cursor.getDate() - 1) }
   return length
 }
-export function readStudyDays(): string[] {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem('recall-study-days') ?? '[]')
-    return Array.isArray(value) ? [...new Set(value.filter((day): day is string => typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day)))].sort().slice(-366) : []
-  } catch { return [] }
-}

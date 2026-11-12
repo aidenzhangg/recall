@@ -52,7 +52,7 @@ export default function Profile({ required = false, account, syncStatus, onAuthe
         <button className="primary" disabled={busy}>{busy ? 'Please wait...' : create ? 'Create account' : 'Sign in'}</button>
       </form>
       <p className="auth-switch">{create ? 'Already have an account?' : 'New to Recall?'} <button type="button" className="text-button" disabled={busy} onClick={() => { setCreate(!create); setError('') }}>{create ? 'Sign in' : 'Create an account'}</button></p>
-      <p className="muted">{required ? 'Your notes and progress are saved to your account, not this device.' : 'You can keep studying without an account. Everything stays saved on this device.'}</p>
+      <p className="muted">{required ? 'Your notes and progress are saved to your account, not this device.' : 'Without an account nothing is saved: your work is gone when you close Recall.'}</p>
     </div>}
   </section>
 }

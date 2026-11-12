@@ -11,9 +11,9 @@ import WebsiteBlocker from './WebsiteBlocker'
 import { appendMaterial } from './material'
 import Flashcards from './Flashcards'
 import PredictionPaper from './PredictionPaper'
-import { accountRequest, clearLocalWorkspace, CLOUD_ACCOUNTS, parseProgress, readLocalWorkspace, readToken, rememberToken, saveLocalWorkspace, saveProgress } from './account'
+import { accountRequest, clearLocalWorkspace, CLOUD_ACCOUNTS, parseProgress, readLocalWorkspace, readToken, rememberToken, saveProgress } from './account'
 import type { Account, SavedProgress } from './account'
-import { dateKey, recentDays, streakLength, readStudyDays } from './activity'
+import { dateKey, recentDays, streakLength } from './activity'
 import './App.css'
 import { makeQuestions, isCorrect, adaptiveQuestions, recordAttempt } from './quiz'
 import type { Question, QuizFormat, ReviewItem } from './quiz'
@@ -25,12 +25,9 @@ function NavIcon({ name }: { name: Tab }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{name === 'Block' ? <><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z"/><path d="m9 9 6 6m0-6-6 6"/></> : name === 'Connect' ? <><rect x="4" y="2" width="10" height="18" rx="2" /><path d="M8 17h2m7-10 4 4-4 4m-5-4h9" /></> : name === 'Cards' ? <><rect x="3" y="6" width="15" height="15" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></> : name === 'Focus' ? <><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2M9 2h6" /></> : name === 'Dashboard' ? <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></> : name === 'Notes' ? <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></> : name === 'Practice' ? <><rect x="4" y="3" width="16" height="18" rx="3" /><path d="m8 9 1.5 1.5L12 8m2 2h2M8 15h8" /></> : <><path d="M20 15a3 3 0 0 1-3 3H9l-5 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" /><path d="M8 8h8M8 12h5" /></>}</svg>
 }
 function App() {
-  // A guest's workspace is restored from this browser; signing in replaces it with the account's copy.
+  // Study data is only ever saved to an account. A workspace left on this device by an earlier version is read once so it can move into the account.
   const [local] = useState(readLocalWorkspace)
-  const [studyDays, setStudyDays] = useState(() => [...new Set([...(local?.studyDays ?? []), ...readStudyDays()])].sort().slice(-366))
-  useEffect(() => {
-    try { localStorage.setItem('recall-study-days', JSON.stringify(studyDays)) } catch { /* Works in memory if storage is unavailable. */ }
-  }, [studyDays])
+  const [studyDays, setStudyDays] = useState(() => local?.studyDays ?? [])
   const recordStudyDay = useCallback(() => {
     const today = dateKey(new Date())
     setStudyDays(previous => previous.includes(today) ? previous : [...previous, today].sort().slice(-366))
@@ -48,7 +45,8 @@ function App() {
     document.documentElement.dataset.theme = theme
     try { localStorage.setItem('recall-theme', theme) } catch { /* Theme still works if storage is unavailable. */ }
   }, [theme])
-  const [hintsOn, setHintsOn] = useState(local?.hintsOn ?? true)
+  // Recall always guides with hints; there is no mode that hands out answers while you are working.
+  const hintsOn = true
   const [notes, setNotes] = useState(local?.notes ?? '')
   const [noteName, setNoteName] = useState(local?.noteName ?? 'Pasted notes')
   const [error, setError] = useState('')
@@ -77,7 +75,7 @@ function App() {
   const [syncStatus, setSyncStatus] = useState('Not saved yet')
   const progress = useMemo<SavedProgress>(() => ({ version: 1, notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays }), [notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays])
   const applyProgress = useCallback((saved: SavedProgress) => {
-    setReview(saved.review ?? []); setAdaptive(saved.adaptive !== false); setNotes(saved.notes); setNoteName(saved.noteName); setCount(saved.count); setFormat(saved.format ?? 'blank'); setHintsOn(saved.hintsOn)
+    setReview(saved.review ?? []); setAdaptive(saved.adaptive !== false); setNotes(saved.notes); setNoteName(saved.noteName); setCount(saved.count); setFormat(saved.format ?? 'blank');
     setQuestions(saved.questions); setAnswers(saved.answers); setSubmitted(saved.submitted)
     setQuestionIndex(saved.questionIndex); setStudyDays(saved.studyDays)
   }, [])
@@ -85,7 +83,7 @@ function App() {
     if (saved) applyProgress(saved)
     rememberToken(next.token); setAccount(next); setSyncStatus('Saving progress')
     // Anything studied before signing in now belongs to the account, not this device.
-    if (CLOUD_ACCOUNTS) clearLocalWorkspace()
+    clearLocalWorkspace()
   }
   useEffect(() => {
     const token = savedToken
@@ -95,7 +93,7 @@ function App() {
       const saved = data.progress ? parseProgress(data.progress) : null
       if (cancelled) return
       if (saved) applyProgress(saved)
-      setAccount({ token, user: data.user }); setSyncStatus('Progress restored')
+      setAccount({ token, user: data.user }); setSyncStatus('Progress restored'); clearLocalWorkspace()
     }).catch(() => {
       if (!cancelled) { rememberToken(null); setError('Sign in to restore your account progress.') }
     }).finally(() => { if (!cancelled) setRestoring(false) })
@@ -112,11 +110,6 @@ function App() {
     }, 800)
     return () => { window.clearTimeout(timer); abort.abort() }
   }, [account, progress])
-  useEffect(() => {
-    if (account || restoring || CLOUD_ACCOUNTS) return
-    const timer = window.setTimeout(() => saveLocalWorkspace(progress), 600)
-    return () => window.clearTimeout(timer)
-  }, [account, restoring, progress])
   async function saveNow() {
     if (!account) return
     setSyncStatus('Saving progress')
@@ -240,9 +233,8 @@ function App() {
   function retry() { setAnswers(questions.map(() => '')); resetSession() }
   const weak = useMemo(() => review.filter(item => item.misses > item.successes).sort((a, b) => (b.misses - b.successes) - (a.misses - a.successes)).slice(0, 4), [review])
   const topics = useMemo(() => [...new Set(makeQuestions(notes, 4, 'long').map(q => q.topic ?? ''))].filter(Boolean), [notes])
-  const hintSwitch = <label className="hint-switch switch" title="With hints on, Recall guides you to answers instead of showing them"><span>Hints</span><input type="checkbox" role="switch" checked={hintsOn} onChange={e => setHintsOn(e.target.checked)} /></label>
   return <main className={gated ? 'panel panel--gated' : 'panel'}>
-    <header className="masthead"><div className="brand"><span className="brand-mark" aria-hidden="true">r</span><div><h1>Recall</h1></div></div><div className="header-controls">{!gated && <button className="save-status" onClick={() => navigate('Profile')}>{account ? account.user.name.split(' ')[0] : 'Sign in'}</button>}<button className="expand-button" onClick={openWorkspace} aria-label="Open Recall in a new tab" title="Open in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></button></div></header>
+    <header className="masthead"><div className="brand"><span className="brand-mark" aria-hidden="true">r</span><div><h1>Recall</h1></div></div><div className="header-controls">{!gated && <button className="save-status" onClick={() => navigate('Profile')}>{account ? account.user.name.split(' ')[0] : 'Sign in to save'}</button>}<button className="expand-button" onClick={openWorkspace} aria-label="Open Recall in a new tab" title="Open in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></button></div></header>
 
     {!gated && <nav className="tabs" aria-label="Study workspace">{(['Tutor', 'Dashboard', 'Notes', 'Practice', 'Cards', 'Focus', 'Block'] as Tab[]).map(name => <button key={name} title={name === 'Tutor' ? 'Recall AI' : name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name} className={`tab${shown === name ? ' active' : ''}`} aria-current={shown === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon name={name} /><span className="tab-label">{name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name === 'Tutor' ? 'Recall AI' : name}</span></button>)}<button type="button" className="tab theme-button" title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{theme === 'dark' ? <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></> : <path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" />}</svg><span className="tab-label">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span></button></nav>}
     <input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} />
@@ -275,7 +267,7 @@ function App() {
       <button className="text-button phone-link" onClick={() => navigate('Connect')}>Send photos from your phone</button>
     </section>}
     {shown === 'Practice' && <section className="content" aria-labelledby="practice-title">
-      <div className="page-heading page-heading--row"><h2 id="practice-title">{!questions.length ? 'New quiz' : submitted ? 'Results' : 'Practice'}</h2>{questions.length > 0 && !submitted && hintSwitch}</div>
+      <div className="page-heading page-heading--row"><h2 id="practice-title">{!questions.length ? 'New quiz' : submitted ? 'Results' : 'Practice'}</h2></div>
       {!questions.length ? <>{paper.length > 0 && <div className="card paper-card"><div><strong>Past paper detected</strong><p>{paper.length} exam question{paper.length === 1 ? '' : 's'} found in this material. Answer them one at a time and review each yourself.</p></div><button className="secondary" onClick={() => startPaper()}>Practise {Math.min(count, paper.length)} past-paper questions</button></div>}{paper.length > 0 ? <PredictionPaper key={notes} source={notes} name={noteName} onConnect={() => navigate('Tutor')} onPractise={prompts => startPaper(prompts, 'Prediction paper - self-review')} /> : <button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Reading the PDF...' : 'Upload a past paper for a prediction paper'}</button>}<div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><label className="focus-topic">Focus topic (optional)<input type="text" maxLength={200} value={focusTopic} onChange={e => setFocusTopic(e.target.value)} placeholder="e.g. cellular respiration" /></label><label className="adaptive-control"><input type="checkbox" checked={adaptive} onChange={e => setAdaptive(e.target.checked)} /><span>Bring back topics I missed</span></label><button className="primary" disabled={!notes.trim() || generating} onClick={() => void generate()}>{generating ? 'Preparing...' : 'Start practice'} </button></> : <>
         {submitted ? <>
           <div className="card results" role="status"><span className="results-score">{graded ? `${score}/${graded}` : 'Done'}</span><div><strong>{graded ? score === graded ? 'Every answer right first time' : `${score} of ${graded} right first time` : 'Ready for self-review'}</strong><p>{questions.length > graded ? `${questions.length - graded} written answer${questions.length - graded === 1 ? '' : 's'} for self-review. ` : ''}{graded > score ? 'Missed questions come back first in your next quiz.' : ''}</p></div></div>
@@ -297,7 +289,7 @@ function App() {
         </>}
       </>}
     </section>}
-    {shown === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={sessionKey} questions={questions} current={questionIndex} notes={notes} hintsOn={hintsOn} topics={topics} token={account?.token} />{questions.length > 0 && <div className="quiz-tools"><button className="text-button" onClick={() => navigate('Practice')}>Back to your quiz</button>{hintSwitch}</div>}</section>}
+    {shown === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={sessionKey} questions={questions} current={questionIndex} notes={notes} topics={topics} token={account?.token} />{questions.length > 0 && <div className="quiz-tools"><button className="text-button" onClick={() => navigate('Practice')}>Back to your quiz</button></div>}</section>}
     </div>
   </main>
 }

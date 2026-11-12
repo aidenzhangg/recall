@@ -1,5 +1,5 @@
 // One place that decides which language model Recall talks to, with no backend required:
-//  1. "key"    - a provider key the user typed into Settings, kept only in this browser profile.
+//  1. "key"    - the key the person who built this copy put in extension/.env.local (see builtIn below).
 //  2. "device" - Chrome's built-in on-device model (no key, nothing leaves the computer).
 //  3. "none"   - no model; callers fall back to notes search and rule-based questions.
 // No key is ever written in this source code.
@@ -29,15 +29,10 @@ export function pickModel(provider: Provider, ids: string[]): string {
   }
   return pool[0] ?? ''
 }
-const STORE = 'recall-ai-settings'
+/** No key is entered or kept in the browser any more; this also removes one saved by an earlier version. */
 export function readAiSettings(): AiSettings {
-  try {
-    const value = JSON.parse(localStorage.getItem(STORE) ?? '{}')
-    return { provider: value.provider in PROVIDERS ? value.provider : 'groq', model: typeof value.model === 'string' ? value.model : '', key: typeof value.key === 'string' ? value.key : '', baseUrl: typeof value.baseUrl === 'string' ? value.baseUrl : '' }
-  } catch { return { provider: 'groq', model: '', key: '', baseUrl: '' } }
-}
-export function saveAiSettings(settings: AiSettings) {
-  try { localStorage.setItem(STORE, JSON.stringify(settings)) } catch { /* Settings then last for this session only. */ }
+  try { localStorage.removeItem('recall-ai-settings') } catch { /* Nothing to remove. */ }
+  return { provider: 'groq', model: '', key: '', baseUrl: '' }
 }
 function endpoint(settings: AiSettings): string {
   const url = (settings.provider === 'custom' ? settings.baseUrl : PROVIDERS[settings.provider].url).trim().replace(/\/+$/, '')

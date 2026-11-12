@@ -4,12 +4,12 @@ A Chrome side-panel workspace for studying your own notes and course materials. 
 
 ## What works
 
-Recall runs entirely inside Chrome. Nobody has to start a server: notes, quizzes, flashcards, review history and settings are saved in the browser. The Java backend is optional and only adds accounts that sync, phone photo transfer and a shared AI key.
+Recall runs entirely inside Chrome, with no server of its own. Study data (notes, quizzes, flashcards, review history) is saved only to an account, never to the device. Accounts live in a Supabase project you connect; without one, work lasts until Recall is closed.
 
 - **Notes and PDFs.** Paste notes or import TXT, Markdown or PDF files, including past papers. PDFs are read in the browser, in reading order, with page and word counts and a warning for pages that have no selectable text. Scanned pages need text recognition, which is not built yet.
-- **Recall AI chat.** A real conversation about your notes: explanations in plain words, comparisons, follow-up questions, "quiz me". It reads the relevant parts of your notes and writes its own answer rather than pasting lines back, then shows which note lines it leaned on. With a quiz question selected and Hints Mode on, it gives stepped hints and never the answer; a reply that would leak the answer is thrown away.
-- **AI-written quizzes and flashcards.** With an AI engine on, quizzes are written from the meaning of your notes (real questions, plausible wrong options, a one-line explanation after you answer) and aimed at the topics you have missed. Flashcards can be written the same way.
-- **Three AI engines, no key in the code.** (1) Chrome's on-device model where available: free, private, one download, no key. (2) Your own key from a provider with a free tier (Groq, Google Gemini, OpenRouter) or any OpenAI-compatible service, entered under **AI settings**. (3) No AI at all: Recall falls back to rule-based questions and a search of your notes, and says so.
+- **Recall AI chat.** A dedicated chat about your notes: explanations in plain words, comparisons, follow-up questions, "quiz me". It reads the relevant parts of your notes and writes its own answer, then shows which note lines it leaned on. For quiz questions it is hints only: three steps that explain the idea, narrow it down and get you almost there. It never gives the answer, and a reply that would leak it is thrown away. There is no setting that turns hints off.
+- **AI-written quizzes and flashcards.** Quizzes are written from the meaning of your notes (real questions, plausible wrong options, a one-line explanation after you answer) and aimed at the topics you have missed. Flashcards can be written the same way.
+- **AI with no setup for users.** The person who builds the extension supplies the AI key (see "The AI key" below). Users never see or enter a key. Where Chrome offers its on-device model, that works too. With no AI at all, Recall falls back to rule-based questions and a search of your notes.
 - **Practice.** Multiple choice, fill in the blank, long answer or mixed. Every question is marked as soon as you answer it, written answers get AI feedback when an AI is connected, and the session ends on a results page that lists each question, your answer and the correct one. Only first-try answers score. Misses and correct answers are tracked per passage, missed material comes back first, and a later review is scheduled after correct answers. This is a rule-based scheduler, not a trained model.
 - **Camera focus.** An optional check on the focus timer that uses the webcam to estimate whether you are looking at the screen: looking at screen, looking away, eyes closed or no face. It shows screen attention as time looking at the screen divided by time tracked, counts how long you have looked away, and after the timeout you choose (15 seconds to 2 minutes) it chimes, pauses the timer and asks if you are still there.
 - **Site blocker.** Block distracting domains and their subdomains with one switch, quick-add buttons for common sites and a list you manage. It uses Chrome's blocking rules and records no browsing history.
@@ -18,7 +18,7 @@ Recall runs entirely inside Chrome. Nobody has to start a server: notes, quizzes
 - **Focus lock.** Starting the focus timer turns site blocking on and locks it: until the session finishes or you end it, sites cannot be removed and blocking cannot be turned off. Pages that were already open stay open until they are reloaded.
 - **Past papers.** Numbered questions found in an imported paper, one at a time, with self-review (papers carry no answer key).
 - **Flashcards and focus timer.** Flip, Got it / Still learning, a missed-card round, and a 15 to 60 minute timer.
-- **Optional account.** Register or use Google to keep progress on a backend you run or host. Without an account everything stays on this device.
+- **Accounts.** Sign in with email and password (or Google) to save everything to your account. Without an account nothing is saved.
 - **Recall Connect (needs the backend).** Pair a phone with a QR code, send a photo from its browser, then review and import the text on the desktop.
 
 The interface is a dark or light side-panel workspace set in Outfit and IBM Plex Sans.
@@ -57,24 +57,20 @@ Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and
 
 Rebuild and reload the extension after source changes. For frontend development, use `npm run dev --prefix extension`; the installed extension uses built assets, not Vite hot reload.
 
-### Turning on AI (getting a free key)
+### The AI key
 
-Recall AI is the first screen. Until an AI is connected it can only search your notes, and it shows the setup right there:
+Users are never asked for a key. Whoever builds the extension provides one, in a file Git ignores:
 
-1. Pick a provider. **Groq** is the quickest; **Google Gemini** and **OpenRouter** also have free tiers.
-2. Press the button to open that provider's key page and sign in:
-   - Groq: `https://console.groq.com/keys`, then **Create API Key**. The key starts with `gsk_`.
-   - Google Gemini: `https://aistudio.google.com/apikey`, then **Create API key**.
-   - OpenRouter: `https://openrouter.ai/settings/keys`, then **Create Key**. Free models end in `:free`.
-3. Copy the key, paste it into Recall and press **Connect**. Recall checks the key, picks a chat model the key can use, and replies start streaming in.
+1. Get a free key: Groq at `https://console.groq.com/keys` (**Create API Key**, starts with `gsk_`), or Google Gemini at `https://aistudio.google.com/apikey`.
+2. Copy `extension/.env.example` to `extension/.env.local`.
+3. Set `VITE_AI_PROVIDER=groq` (or `gemini`) and paste the key after `VITE_AI_KEY=`. `VITE_AI_MODEL` is optional.
+4. Run `npm run build --prefix extension` and share the `extension/dist` folder.
 
-The key is saved only in this browser's storage and is sent only to the provider you picked, along with your question and the relevant parts of your notes. It is never written into this repository or the built extension. Free tiers have rate limits and their own terms. **AI settings** has **Remove key**, a model picker, and (where Chrome offers it) the on-device model, which needs no key at all. Do not save a key on a shared computer.
-
-With an AI connected: chat answers are written by the model, quiz hints explain the idea in three steps without giving the answer (the answer is shown if you ask after the third hint, or at once with Hints Mode off), quizzes and flashcards are written from your notes, and written answers get short feedback.
+The key is not in the repository, but it is inside the built extension, and anyone who installs that build can read it and use it elsewhere. Only use a free key with no payment method attached, expect its rate limit to be shared by everyone, and revoke it at the provider if it is abused. The only way to keep a key truly hidden from users is to hold it on a server.
 
 ### Accounts that save to the cloud (Supabase, no server)
 
-By default Recall saves on the device. To save to an account instead, connect a free Supabase project. The extension talks to Supabase directly, so there is no backend to host.
+Recall saves study data only to an account. To have accounts, connect a free Supabase project. The extension talks to Supabase directly, so there is no backend to host.
 
 1. Create a project at Supabase.
 2. Open **SQL Editor**, paste the contents of `supabase/schema.sql`, and press **Run**. This creates one `progress` table where each person can only read and write their own row.
@@ -83,21 +79,11 @@ By default Recall saves on the device. To save to an account instead, connect a 
 5. Optional: under **Authentication**, then **Sign In / Providers**, then **Email**, turn off "Confirm email" if you want people signed in the moment they register. Left on, they must open the emailed link first.
 6. Run `npm run build --prefix extension` and reload the extension.
 
-With this on, sign-in is the first screen, people stay signed in between sessions, and notes, quizzes and progress are saved to their account and not kept on the device. Anything studied before signing in is moved into the account on first sign-in.
+With this on, sign-in is the first screen, people stay signed in between sessions, and notes, quizzes and progress are saved to their account. Without it, nothing is saved and work is lost when Recall closes.
 
 The Project URL and anon key are meant to be public; row-level security is what protects the data. **Never** use the `service_role` or secret key in the extension: it bypasses that security. As the project owner you can read stored notes in the Supabase dashboard, so tell your users.
 
 **Continue with Google** in this mode needs two more steps in Supabase: enable the Google provider under Authentication (it asks for a Google OAuth client ID and secret, which stay in Supabase), and add `https://<your-extension-id>.chromiumapp.org/` under Authentication, URL Configuration, Redirect URLs. Recall Connect (phone photos) still needs the Java backend.
-
-### One shared key for everyone (optional)
-
-If you want people to use your build without getting their own key, put a key in a file Git ignores:
-
-1. Copy `extension/.env.example` to `extension/.env.local`.
-2. Set `VITE_AI_PROVIDER=groq` (or `gemini`) and paste your key after `VITE_AI_KEY=`.
-3. Run `npm run build --prefix extension` and share the `extension/dist` folder.
-
-The key is not in the repository, but it is inside the built extension, and anyone who installs that build can read it and use it elsewhere. Only use a free key with no payment method attached, expect its rate limit to be shared by everyone, and revoke it at the provider if it is abused. A key someone enters themselves in AI settings takes priority. The safe way to share a paid key is the backend option below, where the key never leaves your server.
 
 ### Camera focus
 
@@ -145,7 +131,7 @@ The address can be the `postgresql://...` form providers show or a JDBC address.
 
 ### A shared AI key on the backend (optional)
 
-Instead of each person entering their own key in the extension, a hosted backend can hold one key for all signed-in users, using any OpenAI-compatible API. Several providers have a free tier with a free key: Groq, Google Gemini (AI Studio) and OpenRouter's free models. Ollama runs a model on your own computer with no key at all.
+To keep the AI key hidden from users, a hosted backend can hold one key for all signed-in users, using any OpenAI-compatible API. Several providers have a free tier with a free key: Groq, Google Gemini (AI Studio) and OpenRouter's free models. Ollama runs a model on your own computer with no key at all.
 
 1. Create a key on the provider's site and pick a model name from its model list.
 2. In `backend/recall.local.properties` set `recall.ai.provider` (`groq`, `gemini`, `openrouter`, `openai` or `ollama`), `recall.ai.model` and `recall.ai.key` (environment: `RECALL_AI_PROVIDER`, `RECALL_AI_MODEL`, `RECALL_AI_KEY`; `RECALL_AI_BASE_URL` for any other compatible service).
@@ -196,10 +182,10 @@ Set `VITE_API_BASE` at build time to the HTTPS backend `/api` URL. The build add
 
 Recall is a student project, provided as is with no warranty. Read this before putting anything sensitive in it.
 
-- **Your notes and progress** stay in this browser's storage unless you sign in. They are not encrypted there, and clearing browser data or removing the extension deletes them.
-- **AI.** With a provider key connected, your questions, the relevant parts of your notes, quiz questions and written answers are sent from your browser to that provider (Groq, Google, OpenRouter or OpenAI) and handled under that provider's terms and privacy policy, which may allow logging or, on some free tiers, use for improving their models. Do not put personal, confidential or exam-restricted material in notes you use with a hosted model. With Chrome's on-device model, nothing leaves the computer.
+- **Your notes and progress** are saved only to your account in the Supabase project the builder connected. Whoever owns that project can read them. Nothing study-related is written to the device; only your sign-in session and the light/dark setting are kept in the browser.
+- **AI.** Your questions, the relevant parts of your notes, quiz questions and written answers are sent from your browser to the AI provider the builder chose (Groq or Google) and handled under that provider's terms and privacy policy, which may allow logging or, on some free tiers, use for improving their models. Do not put personal, confidential or exam-restricted material in your notes. With Chrome's on-device model, nothing leaves the computer.
 - **Camera.** Frames are processed in memory on your computer to get face landmarks and are then discarded. No image, video or face data is saved, uploaded, or used to identify anyone. The only request made is the one-time download of the model file from Google. Turning the switch off stops the camera.
-- **Your API key** is stored unencrypted in this browser profile. Anyone with access to the profile can read it. You are responsible for any usage on your key.
+- **The AI key** belongs to whoever built the extension and is readable inside the build. Users do not enter one.
 - **Accounts (optional backend).** Email, name, a salted PBKDF2 password hash and your progress snapshot are stored on whichever backend and database you or the host configure. Whoever runs that backend can read the stored notes. This application does not encrypt data at rest.
 - **Site blocker** rules stay in the browser; no browsing history is recorded or sent.
 - **Accuracy.** AI answers, hints, marks and generated questions can be wrong. The attention percentage is an estimate of where your face points, not a measure of focus. Do not rely on either for grades, assessment or anything medical.
