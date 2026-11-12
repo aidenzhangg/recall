@@ -14,6 +14,8 @@ import { dateKey, recentDays, streakLength, readStudyDays } from './activity'
 import './App.css'
 import { makeQuestions, isCorrect, adaptiveQuestions, recordAttempt } from './quiz'
 import type { Question, QuizFormat, ReviewItem } from './quiz'
+import { examQuestions } from './exam'
+import { resourceLinks } from './tutor'
 
 type Tab = 'Dashboard' | 'Notes' | 'Practice' | 'Tutor' | 'Focus' | 'Connect' | 'Cards' | 'Block' | 'Profile'
 function NavIcon({ name }: { name: Tab }) {
@@ -141,19 +143,26 @@ function App() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not import the file.') }
     finally { setImporting(false) }
   }
-  async function generate() {
+  async function generate(weakFirst = false) {
     if (generating) return
+    const useHistory = weakFirst || adaptive
     const id = ++generationId.current
     setGenerating(true); setError('')
     try {
       let next: Question[]
-      try { next = await requestQuiz(notes, count, format, adaptive ? review : [], focusTopic); setQuizOrigin('Backend practice') }
-      catch { next = adaptive ? adaptiveQuestions(notes, count, format, review, Date.now(), focusTopic) : makeQuestions(notes, count, format, focusTopic); setQuizOrigin('Local practice - backend unavailable') }
+      try { next = await requestQuiz(notes, count, format, useHistory ? review : [], focusTopic); setQuizOrigin(weakFirst ? 'Targeted practice - missed topics first' : 'Backend practice') }
+      catch { next = useHistory ? adaptiveQuestions(notes, count, format, review, Date.now(), focusTopic) : makeQuestions(notes, count, format, focusTopic); setQuizOrigin('Local practice - backend unavailable') }
       if (id !== generationId.current) return
       if (!next.length) { setError('No clear definitions or explanations matched. Try another focus topic or select the relevant lecture text in Notes.'); return }
       setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false)
       setQuestionIndex(0); setTab('Practice')
     } finally { if (id === generationId.current) setGenerating(false) }
+  }
+  const paper = useMemo(() => examQuestions(notes), [notes])
+  function startPaper() {
+    const next = paper.slice(0, count).map((prompt): Question => ({ kind: 'long', prompt, answer: 'Past papers do not include an answer key. Check your answer against your course notes or the mark scheme.' }))
+    generationId.current++; setGenerating(false); setError('')
+    setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false); setQuestionIndex(0); setQuizOrigin('Past-paper practice - self-review')
   }
   function openWorkspace() {
     if (typeof chrome !== 'undefined' && chrome.tabs) void chrome.tabs.create({ url: chrome.runtime.getURL('index.html') })
@@ -165,15 +174,27 @@ function App() {
   const graded = questions.filter(q => q.kind !== 'long').length
   const score = questions.filter((q, i) => isCorrect(q, answers[i])).length
   const question = questions[questionIndex]
+  const weak = useMemo(() => review.filter(item => item.misses > item.successes).sort((a, b) => (b.misses - b.successes) - (a.misses - a.successes)).slice(0, 4), [review])
+  const topics = useMemo(() => [...new Set(makeQuestions(notes, 4, 'long').map(q => q.topic ?? ''))].filter(Boolean), [notes])
+  const tools: { tab: Tab; title: string; text: string; planned?: boolean }[] = [
+    { tab: 'Tutor', title: 'Recall AI', text: 'Ask a question and get the answer from your own notes.' },
+    { tab: 'Practice', title: 'Adaptive quizzes', text: 'Practice that brings back the topics you missed.' },
+    { tab: 'Cards', title: 'Flashcards', text: 'Flip through key terms and sort what you know.' },
+    { tab: 'Notes', title: 'Past papers', text: 'Import an old exam and practise its questions.' },
+    { tab: 'Focus', title: 'Focus timer', text: 'Timed sessions that build your study streak.' },
+    { tab: 'Block', title: 'Block sites', text: 'Keep distracting websites closed while you study.' },
+    { tab: 'Connect', title: 'Recall Connect', text: 'Send photos of notes from your phone to this PC.' },
+    { tab: 'Focus', title: 'Gaze check-ins', text: 'Camera-based break reminders. Not built yet.', planned: true },
+  ]
   return <main className="panel">
     <header className="masthead"><div className="brand"><span className="brand-mark" aria-hidden="true">r</span><div><h1>Recall</h1></div></div><div className="header-controls"><button className="save-status" onClick={() => navigate('Profile')}>{account ? syncStatus : 'Sign in'}</button><button className="expand-button" onClick={openWorkspace} aria-label="Open Recall in a new tab" title="Open in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></button></div></header>
 
-    <nav className="tabs" aria-label="Study workspace">{(['Dashboard', 'Notes', 'Practice', 'Tutor', 'Cards', 'Focus', 'Block', 'Connect'] as Tab[]).map(name => <button key={name} title={name} aria-label={name} className={`tab${tab === name ? ' active' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon name={name} /><span className="tab-label">{name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name}</span></button>)}<section className="agent-bar" aria-label="Study assistance controls"><div><strong>Hints Mode</strong></div><div className={`mode-toggle${hintsOn ? ' mode-toggle--on' : ''}`} role="group" aria-label="Hints Mode"><span className="mode-indicator" aria-hidden="true" /><button aria-pressed={hintsOn} onClick={() => setHintsOn(true)}>On</button><button aria-pressed={!hintsOn} onClick={() => setHintsOn(false)}>Off</button></div></section><div className="theme-switch" role="group" aria-label="Appearance"><button type="button" aria-label="Light mode" title="Light mode" aria-pressed={theme === 'light'} onClick={() => setTheme('light')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg></button><button type="button" aria-label="Dark mode" title="Dark mode" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" /></svg></button></div></nav>
+    <nav className="tabs" aria-label="Study workspace">{(['Dashboard', 'Notes', 'Practice', 'Tutor', 'Cards', 'Focus', 'Block', 'Connect'] as Tab[]).map(name => <button key={name} title={name === 'Tutor' ? 'Recall AI' : name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name} className={`tab${tab === name ? ' active' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon name={name} /><span className="tab-label">{name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name === 'Tutor' ? 'Recall AI' : name}</span></button>)}<section className="agent-bar" aria-label="Study assistance controls"><div><strong>Hints Mode</strong></div><div className={`mode-toggle${hintsOn ? ' mode-toggle--on' : ''}`} role="group" aria-label="Hints Mode"><span className="mode-indicator" aria-hidden="true" /><button aria-pressed={hintsOn} onClick={() => setHintsOn(true)}>On</button><button aria-pressed={!hintsOn} onClick={() => setHintsOn(false)}>Off</button></div></section><div className="theme-switch" role="group" aria-label="Appearance"><button type="button" aria-label="Light mode" title="Light mode" aria-pressed={theme === 'light'} onClick={() => setTheme('light')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg></button><button type="button" aria-label="Dark mode" title="Dark mode" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" /></svg></button></div></nav>
     {restoring && <p className="restore-status" role="status">Restoring your account</p>}
     {error && <p className="error" role="alert">{error}</p>}
     <div inert={restoring} className={tab === 'Tutor' ? 'workspace workspace--tutor' : tab === 'Dashboard' ? 'workspace workspace--dashboard' : 'workspace'}>
     {tab === 'Dashboard' && <section className="dashboard" aria-labelledby="dashboard-title">
-      <div className="page-heading"><h2 id="dashboard-title">Workspace</h2></div>
+      <div className="page-heading"><h2 id="dashboard-title">{account ? `Welcome back, ${account.user.name.split(' ')[0]}` : 'Workspace'}</h2><p>Learn from your own course material with practice, hints and review.</p></div>
       <section className="session-overview" aria-label="Current material">
         <div className="overview-heading"><span>Current material</span><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'}</button></div>
         <h3>{words ? noteName : 'No notes added'}</h3>
@@ -181,8 +202,9 @@ function App() {
         {questions.length > 0 && <progress value={answered} max={questions.length} aria-label="Practice questions answered" />}
         <button className="primary" onClick={() => navigate(questions.length ? 'Practice' : words ? 'Practice' : 'Notes')}>{questions.length ? 'Continue practice' : words ? 'Create quiz' : 'Add study material'}</button>
       </section>
-      <div className="dashboard-links"><button onClick={() => navigate('Tutor')}><span>Recall AI</span><span aria-hidden="true">&rarr;</span></button><button onClick={() => navigate('Focus')}><span>Focus timer</span><span aria-hidden="true">&rarr;</span></button></div>
-      <section className="activity-summary" aria-label="Study activity"><div><h3>Activity</h3><span>{streakLength(studyDays)}-day streak</span></div><div className="streak-days" aria-label="Study activity over the last seven days">{recentDays().map(day => <span key={day} className={studyDays.includes(day) ? 'streak-day active' : 'streak-day'} title={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`} aria-label={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`}>{Number(day.slice(-2))}</span>)}</div></section>
+      {weak.length > 0 && <section className="card weak-topics" aria-labelledby="weak-title"><div className="card-heading"><h3 id="weak-title">Needs practice</h3><span>from your missed answers</span></div><ul>{weak.map(item => <li key={item.source}><div><strong>{item.topic}</strong><span>Missed {item.misses}x{item.successes ? `, correct ${item.successes}x` : ''}</span></div><div className="chips" aria-label={`Look up ${item.topic}`}>{resourceLinks(item.topic).slice(0, 3).map(link => <a key={link.label} className="chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>)}</div></li>)}</ul><button className="primary" disabled={generating || !notes.trim()} onClick={() => void generate(true)}>{generating ? 'Preparing...' : 'Practice weak topics'}</button></section>}
+      <section className="tools" aria-labelledby="tools-title"><h3 id="tools-title">Study tools</h3><div className="feature-grid">{tools.map(tool => <button key={tool.title} className="feature" onClick={() => navigate(tool.tab)}><NavIcon name={tool.tab} /><strong>{tool.title}{tool.planned && <span className="pill">Planned</span>}</strong><span>{tool.text}</span></button>)}</div></section>
+      <section className="card activity-summary" aria-label="Study activity"><div><h3>Activity</h3><span>{streakLength(studyDays)}-day streak</span></div><div className="streak-days" aria-label="Study activity over the last seven days">{recentDays().map(day => <span key={day} className={studyDays.includes(day) ? 'streak-day active' : 'streak-day'} title={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`} aria-label={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`}>{Number(day.slice(-2))}</span>)}</div></section>
     </section>}
     {tab === 'Block' && <WebsiteBlocker />}
     {tab === 'Connect' && <Connect key={account?.user.id ?? 'guest'} account={account} onSignIn={() => navigate('Profile')} onImport={text => { setNotes(appendMaterial(notes, text)); setNoteName('Imported material'); navigate('Notes') }} />}
@@ -190,7 +212,7 @@ function App() {
     {tab === 'Profile' && <Profile account={account} syncStatus={syncStatus} onAuthenticated={authenticate} onSave={saveNow} onSignOut={signOut} />}
     <div hidden={tab !== 'Focus'}><FocusTimer key={account?.user.id ?? 'guest'} onComplete={recordStudyDay} /></div>
     {tab === 'Notes' && <section className="content" aria-labelledby="notes-title">
-      <div className="page-heading"><h2 id="notes-title">Notes</h2></div>
+      <div className="page-heading"><h2 id="notes-title">Notes</h2><p>Everything Recall asks or answers comes from the material you add here.</p></div>
       <div className="material-panel"><div className="material-heading"><NavIcon name="Notes" /><div><strong>{words ? noteName : 'Add course notes'}</strong><p>Notes or past paper / TXT, MD, PDF / 20 MB</p></div></div><input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} /><button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Importing...' : words ? 'Replace material' : 'Import material'}</button></div>
       {importReport && importReport.name === noteName && <div className="import-report" role="status"><p>{importReport.pages ? `${importReport.pages} pages processed / ` : ''}{words.toLocaleString()} words extracted. Review the text below.</p>{importReport.warnings.length > 0 && <details open><summary>Some PDF content may be missing</summary><ul>{importReport.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details>}</div>}
       <div className="editor"><div className="field-heading"><label htmlFor="notes">Paste or edit notes</label><span>{words} words</span></div><textarea id="notes" maxLength={200000} value={notes} onChange={e => editNotes(e.target.value)} placeholder="Paste definitions, notes, or a topic you want to review" /></div>
@@ -198,7 +220,7 @@ function App() {
     </section>}
     {tab === 'Practice' && <section className="content" aria-labelledby="practice-title">
       <div className="page-heading"><h2 id="practice-title">{questions.length ? 'Practice session' : 'New quiz'}</h2></div>
-      {!questions.length ? <><div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><label className="focus-topic">Focus topic (optional)<input type="text" maxLength={200} value={focusTopic} onChange={e => setFocusTopic(e.target.value)} placeholder="e.g. cellular respiration" /></label><p className="muted">Uses definitions and explanations; skips course logistics. Enter a topic to narrow the lecture material. No AI.</p><label className="adaptive-control"><input type="checkbox" checked={adaptive} onChange={e => setAdaptive(e.target.checked)} /><span>Prioritize topics I missed</span></label><p className="muted">{review.filter(item => item.misses > item.successes).length} topics need practice. Written answers use self-review.</p><button className="primary" disabled={!notes.trim() || generating} onClick={() => void generate()}>{generating ? 'Preparing...' : 'Start practice'} </button></> : <>
+      {!questions.length ? <>{paper.length > 0 && <div className="card paper-card"><div><strong>Past paper detected</strong><p>{paper.length} exam question{paper.length === 1 ? '' : 's'} found in this material. Answer them one at a time and review each yourself.</p></div><button className="secondary" onClick={startPaper}>Practise {Math.min(count, paper.length)} past-paper questions</button></div>}<div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><label className="focus-topic">Focus topic (optional)<input type="text" maxLength={200} value={focusTopic} onChange={e => setFocusTopic(e.target.value)} placeholder="e.g. cellular respiration" /></label><p className="muted">Uses definitions and explanations; skips course logistics. Enter a topic to narrow the lecture material.</p><label className="adaptive-control"><input type="checkbox" checked={adaptive} onChange={e => setAdaptive(e.target.checked)} /><span>Prioritize topics I missed</span></label><p className="muted">{review.filter(item => item.misses > item.successes).length} topics need practice. Written answers use self-review.</p><button className="primary" disabled={!notes.trim() || generating} onClick={() => void generate()}>{generating ? 'Preparing...' : 'Start practice'} </button></> : <>
         <p className="muted" role="status">{quizOrigin}</p><div className="quiz-progress"><div><span>Question {questionIndex + 1} of {questions.length}</span><span>{answered} answered</span></div><progress value={answered} max={questions.length} aria-label="Questions answered" /></div>
         <div className="question"><label id="question-prompt" htmlFor={`answer-${questionIndex}`}>{question.prompt}</label>
           {question.kind === 'choice' ? <fieldset className="choice-options" aria-labelledby="question-prompt"><legend className="visually-hidden">Choose an answer</legend>{question.options?.map(option => <label key={option}><input type="radio" name={`answer-${questionIndex}`} value={option} checked={answers[questionIndex] === option} disabled={submitted} onChange={() => setAnswers(previous => previous.map((a, i) => i === questionIndex ? option : a))} /><span>{option}</span></label>)}</fieldset>
@@ -208,10 +230,10 @@ function App() {
         </div>
         <div className="question-navigation"><button className="text-button" disabled={questionIndex === 0} onClick={() => setQuestionIndex(i => i - 1)}> Previous</button><button className="text-button" disabled={questionIndex === questions.length - 1} onClick={() => setQuestionIndex(i => i + 1)}>Next </button></div>
         {submitted ? <><p className="result" role="status">{graded ? `${score} of ${graded} auto-scored answers correct` : 'Responses ready for self-review'}{questions.length > graded && graded > 0 ? `; ${questions.length - graded} for self-review` : ''}</p><button className="primary" onClick={() => setSubmitted(false)}>Retry answers </button></> : <button className="primary" disabled={answered !== questions.length} onClick={() => { setSubmitted(true); setReview(previous => recordAttempt(previous, questions, answers)); recordStudyDay() }}>Check all answers </button>}
-        <div className="quiz-tools">{hintsOn && <button className="text-button" onClick={() => navigate('Tutor')}>Ask for a hint </button>}<button className="text-button" onClick={() => { setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0) }}>New session</button></div>
+        <div className="quiz-tools"><button className="text-button" onClick={() => navigate('Tutor')}>{hintsOn ? 'Ask for a hint' : 'Ask Recall AI'}</button><button className="text-button" onClick={() => { setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0) }}>New session</button></div>
       </>}
     </section>}
-    {tab === 'Tutor' && <section className="content" aria-label="Study tutor">{hintsOn ? <><HintCoach key={questions.map(q => q.prompt).join()} questions={questions.map(q => q.prompt)} /><button className="text-button return-link" onClick={() => navigate('Practice')}>{questions.length ? ' Back to your quiz' : 'Create a practice quiz '}</button></> : <div className="empty-state"><NavIcon name="Tutor" /><h2>Recall AI</h2><button className="primary" onClick={() => !hintsOn ? setHintsOn(true) : navigate(words ? 'Practice' : 'Notes')}>{!hintsOn ? 'Enable hints' : words ? 'Create a quiz' : 'Add notes'}</button></div>}</section>}
+    {tab === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={questions.map(q => q.prompt).join()} questions={questions} current={questionIndex} notes={notes} hintsOn={hintsOn} topics={topics} />{questions.length > 0 && <button className="text-button return-link" onClick={() => navigate('Practice')}>Back to your quiz</button>}</section>}
     </div>
     <footer className="app-footer">
       <span role="status">{serverUp === null ? 'Connecting' : serverUp ? 'Backend connected' : 'Local mode'}</span>
