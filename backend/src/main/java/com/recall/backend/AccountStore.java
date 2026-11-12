@@ -37,6 +37,22 @@ public class AccountStore {
             org.springframework.beans.factory.ObjectProvider<JdbcAccounts> database) throws IOException {
         this(directory);
         this.database = database.getIfAvailable();
+        if (this.database != null) importFileAccounts();
+    }
+    public boolean usesDatabase() { return database != null; }
+    /** Copies accounts created in local-file mode into the database once, so switching storage does not lose them. */
+    private void importFileAccounts() throws IOException {
+        try (var files = Files.newDirectoryStream(directory, "*.properties")) {
+            for (Path path : files) {
+                String key = path.getFileName().toString().replaceFirst("\\.properties$", "");
+                try {
+                    if (!key.matches("[0-9a-f]{64}") || database.exists(key)) continue;
+                    var properties = new Properties();
+                    try (InputStream input = Files.newInputStream(path)) { properties.load(input); }
+                    database.save(key, properties);
+                } catch (RuntimeException skipped) { /* One unreadable or conflicting file must not stop the backend. */ }
+            }
+        }
     }
     private boolean exists(String key) { return database == null ? Files.exists(file(key)) : database.exists(key); }
     public synchronized Login register(String name, String email, String password) throws IOException {

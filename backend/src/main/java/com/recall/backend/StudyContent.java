@@ -13,6 +13,19 @@ final class StudyContent {
     static boolean startsFact(String line) {
         return SUBJECT.matcher(line).find() || DEFINITION.matcher(line).find();
     }
+    /** Rewrites "Term verb rest." as a question whose answer is the term, so multiple choice is not a fill-in-the-blank. */
+    static String choicePrompt(String source, String term, String fallback) {
+        var mentions = Pattern.compile("(?<![A-Za-z])" + Pattern.quote(term) + "(?![A-Za-z])", Pattern.CASE_INSENSITIVE);
+        java.util.function.UnaryOperator<String> tidy = text -> mentions.matcher(text.trim()).replaceAll("it").replaceAll("[.!\\s]+$", "");
+        if (DEFINITION.matcher(source).find()) {
+            String description = tidy.apply(source.substring(source.indexOf(':') + 1));
+            return description.isEmpty() ? fallback : "Which term matches this description: \"" + description + "\"?";
+        }
+        var subject = SUBJECT.matcher(source);
+        if (!subject.find()) return fallback;
+        String rest = tidy.apply(source.substring(subject.end()));
+        return rest.isEmpty() ? fallback : "Which of these " + subject.group(2).toLowerCase(Locale.ROOT) + " " + rest + "?";
+    }
     static List<Item> candidates(String notes, String focus) {
         var result = new ArrayList<Item>();
         for (String source : StudyPassages.split(notes)) {

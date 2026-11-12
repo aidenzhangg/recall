@@ -423,3 +423,10 @@ button.flashcard:hover { border-color: var(--accent); }
 .auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--rule); }
 .google-button { gap: 10px; background: var(--field-bg); }
 .google-mark { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #fff; color: #4285f4; font: 700 13px var(--font-display); }
+/* Multiple choice marks the pick right or wrong as soon as it is chosen. */
+.question .choice-options label.choice-right { border-color: var(--accent); background: var(--accent-surface); }
+.question .choice-options label.choice-wrong { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.choice-options label.choice-right span::after { content: ' \2713'; color: var(--accent); font-weight: 600; }
+.choice-options label.choice-wrong span::after { content: ' \2715'; color: var(--danger); font-weight: 600; }
+.choice-feedback { font-size: 13px; font-weight: 500; }
+.choice-feedback--wrong { color: var(--danger); }

@@ -60,6 +60,18 @@ function selectCandidates(items: Candidate[], count: number, priority: (source: 
   }
   return selected
 }
+/** Rewrites "Term verb rest." as a question whose answer is the term, so multiple choice is not a fill-in-the-blank. */
+function choicePrompt(source: string, term: string): string {
+  const mentions = new RegExp(`(?<![A-Za-z])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'gi')
+  const tidy = (text: string) => text.trim().replace(mentions, 'it').replace(/[.!\s]+$/, '')
+  if (conceptDefinition.test(source)) {
+    const description = tidy(source.slice(source.indexOf(':') + 1))
+    return description ? `Which term matches this description: "${description}"?` : ''
+  }
+  const match = source.match(conceptSubject)
+  const rest = match ? tidy(source.slice(match[0].length)) : ''
+  return rest ? `Which of these ${match![2].toLowerCase()} ${rest}?` : ''
+}
 function generateQuestions(notes: string, count: number, format: QuizFormat, focus: string, priority: (source: string) => number): Question[] {
   const items = candidates(notes, focus)
   const pool = [...new Map(items.map(item => [item.term.toLowerCase(), item.term])).values()]
@@ -71,7 +83,7 @@ function generateQuestions(notes: string, count: number, format: QuizFormat, foc
     const options = pool.filter(word => word.toLowerCase() !== term.toLowerCase()).slice(0, 3)
     if (kind === 'blank' || !options.length) return { kind: 'blank', source, topic: term, prompt, answer: term }
     options.splice(index % (options.length + 1), 0, term)
-    return { kind, source, topic: term, prompt, answer: term, options }
+    return { kind, source, topic: term, prompt: choicePrompt(source, term) || prompt, answer: term, options }
   })
 }
 export function makeQuestions(notes: string, count: number, format: QuizFormat, focus = ''): Question[] {

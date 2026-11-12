@@ -13,14 +13,16 @@ A Chrome side-panel workspace for studying your own notes and course materials. 
 - See missed topics on the dashboard with a one-click targeted practice session and search links (Wikipedia, Khan Academy, YouTube, MIT OpenCourseWare) for each. The links open a search for the topic; they are not curated recommendations.
 - Practise numbered questions detected in an imported past paper, one at a time, with self-review (papers carry no answer key).
 - Use flashcards with flip, Got it / Still learning sorting and a missed-card round, plus a deadline-based focus timer. Long answers are explicitly self-reviewed. Camera gaze check-ins are planned only; nothing uses the camera.
-- Register/sign in to save progress. Local file storage is the default; a PostgreSQL profile is available.
+- Register/sign in to save progress. Local file storage is the default; setting a database address switches accounts to PostgreSQL (for example Supabase), with no Docker.
+- Multiple choice asks a real question ("Which of these is the movement of water across a membrane?") and marks your pick right or wrong the moment you choose. With Hints Mode on you can try again; with it off the correct option is shown. A wrong first pick still counts as a miss for review.
+- Optionally use a hosted language model through your backend with a free-tier key. The key stays on the backend.
 - Pair a phone from Connect using a locally generated QR code. Open the browser upload page without installing an app, send a JPEG/PNG, then refresh the desktop inbox to review/transcribe and import its text.
 
 The interface uses a compact utility layout, Space Grotesk + IBM Plex Sans typography, IBM Plex Mono for status/data, and charcoal/signal-green or light surfaces.
 
 ## Stack
 
-React, TypeScript, Vite, plain CSS, Chrome Manifest V3, Java 21, Spring Boot, JDBC/PostgreSQL, PDFBox, Maven and GitHub Actions. Hints and quizzes use local rules. No external AI provider or API key is used.
+React, TypeScript, Vite, plain CSS, Chrome Manifest V3, Java 21, Spring Boot, JDBC/PostgreSQL, PDFBox, Maven and GitHub Actions. Hints and quizzes use local rules. By default no external AI provider or API key is used; a hosted model is opt-in through backend settings.
 
 ## Run locally
 
@@ -39,26 +41,42 @@ Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and
 
 For frontend development, use `npm run dev --prefix extension` from the root. The installed extension uses built assets, not Vite hot reload.
 
-### PostgreSQL
+### Private settings
 
-The default local mode does not require Docker and preserves the existing file-account workflow. To use PostgreSQL, start Docker Desktop and set a private password in the same PowerShell terminal:
+Keys and passwords never go in the repository. Copy `backend/recall.example.properties` to `backend/recall.local.properties` and fill in only the parts you use; Git ignores that file. On a hosting platform, set the matching environment variables instead (named in each section below).
 
-```powershell
-$env:RECALL_DATABASE_PASSWORD = [Net.NetworkCredential]::new('', (Read-Host 'Local database password' -AsSecureString)).Password
-```
+### Database: Supabase or any PostgreSQL (no Docker)
 
-From the repository root:
+By default accounts are stored in local files under `backend/data`. To use a real database, give the backend a PostgreSQL address; nothing else needs installing.
 
-```powershell
-docker compose up -d postgres
-$env:SPRING_PROFILES_ACTIVE = 'postgres'
-cd backend
-.\mvnw.cmd spring-boot:run
-```
+1. Create a free project at Supabase (or Neon, or use a PostgreSQL you installed yourself).
+2. In Supabase open **Connect** and copy the **Session pooler** address, user and password.
+3. Put them in `backend/recall.local.properties` as `recall.database.url`, `recall.database.username` and `recall.database.password` (environment: `RECALL_DATABASE_URL`, `RECALL_DATABASE_USER`, `RECALL_DATABASE_PASSWORD`).
+4. Start the backend. `http://localhost:8080/api/health` shows `"storage":"database"` when it is in use.
 
-PostgreSQL is bound to the local machine on port 5432. The profile uses the local `recall` database and user. A hosted database can be configured with `RECALL_DATABASE_URL`, `RECALL_DATABASE_USER` and `RECALL_DATABASE_PASSWORD`; keep their values outside Git. The URL must be a JDBC PostgreSQL URL. No environment values should be pasted into logs or support messages.
+The address can be the `postgresql://...` form providers show or a JDBC address. TLS is required for any host other than this computer. The table is created on first start, and accounts made earlier in local-file mode are copied into the database once so they keep working. A small connection pool keeps hosted free tiers within their connection limits. Login sessions stay in memory, so sign in again after a backend restart. MongoDB is not supported; the account store is SQL.
 
-Profiles use separate account stores. Existing file accounts are not automatically migrated to PostgreSQL; switching back restores access to the original files. Do not delete them. PostgreSQL accounts and workspace snapshots persist; login sessions remain in memory and require signing in again after a backend restart. The initial table is created idempotently; a schema migration tool and a bounded connection pool are future production work.
+### AI answers with a key (optional)
+
+Recall AI can use a hosted language model through any OpenAI-compatible API. Several providers have a free tier with a free key: Groq, Google Gemini (AI Studio) and OpenRouter's free models. Ollama runs a model on your own computer with no key at all.
+
+1. Create a key on the provider's site and pick a model name from its model list.
+2. In `backend/recall.local.properties` set `recall.ai.provider` (`groq`, `gemini`, `openrouter`, `openai` or `ollama`), `recall.ai.model` and `recall.ai.key` (environment: `RECALL_AI_PROVIDER`, `RECALL_AI_MODEL`, `RECALL_AI_KEY`; `RECALL_AI_BASE_URL` for any other compatible service).
+3. Restart the backend and sign in to the extension. Recall AI shows which model is on.
+
+How the key stays private: the extension never sees it. It sends your question and the matching note lines to your backend, which adds the key and calls the provider. Only signed-in users can use it, each limited to 20 questions per five minutes, so a hosted backend cannot be used as an open proxy. Replies that would reveal a hidden quiz answer are refused. Free tiers have their own limits and terms, and the provider receives the text sent to it. Without this setup Recall AI uses Chrome's on-device model where available, otherwise notes search.
+
+### Hosting the backend on AWS (no Docker)
+
+The backend is one runnable jar, which AWS Elastic Beanstalk's Java platform runs directly.
+
+1. Build it from `backend`: `.\mvnw.cmd -DskipTests package`. The jar is `backend/target/backend-0.0.1-SNAPSHOT.jar`.
+2. In the AWS console create an Elastic Beanstalk application on the **Java (Corretto 21)** platform, single instance, and upload the jar.
+3. In the environment's configuration add environment properties: `PORT=5000`, the three `RECALL_DATABASE_*` values (a hosted database is required, because the instance's disk is not permanent), and optionally the `RECALL_AI_*` values and `RECALL_GOOGLE_CLIENT_ID`.
+4. Put HTTPS in front before anyone signs in, for example a CloudFront distribution pointing at the environment, or a load balancer with a certificate for your own domain. Do not send passwords to the plain `http://` address.
+5. Build the extension against it: set `VITE_API_BASE=https://your-address/api` in `extension/.env.local`, run `npm run build --prefix extension`, and reload the extension. The build adds permission for that address to the manifest.
+
+AWS bills by usage once any free allowance runs out, so check the pricing for the instance type you choose and delete the environment when you stop using it. These steps have not been run from this repository.
 
 ### Sign in with Google (optional)
 
@@ -85,7 +103,7 @@ Transfer is **through the backend**, including a local backend on your laptop. I
 
 ### Hosted extension configuration
 
-Set `VITE_API_BASE` at build time to the HTTPS backend `/api` URL. Add only that origin to `host_permissions` in `extension/public/manifest.json` and rebuild. The default permission covers only localhost:8080. The phone page is served by the same backend, so its uploads use same-origin requests.
+Set `VITE_API_BASE` at build time to the HTTPS backend `/api` URL. The build adds that origin to `host_permissions` in the built manifest. The default permission covers only localhost:8080. The phone page is served by the same backend, so its uploads use same-origin requests.
 
 ## Privacy and limits
 

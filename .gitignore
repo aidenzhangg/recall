@@ -10,3 +10,7 @@
 !.env.example
 *.jks
 *.p12
+
+# Private backend settings: database password, AI key, Google client ID
+recall.local.properties
+database.local.properties

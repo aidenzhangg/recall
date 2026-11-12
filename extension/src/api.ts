@@ -36,6 +36,23 @@ export async function requestQuiz(notes: string, count: number, format: QuizForm
   return data
 }
 
+export type CloudAi = { enabled: boolean; model: string }
+/** Whether the backend has an AI provider configured. The key itself never leaves the backend. */
+export async function cloudAiStatus(): Promise<CloudAi> {
+  try {
+    const response = await fetch(`${API_BASE}/ai`, { signal: AbortSignal.timeout(5000) })
+    const data = response.ok ? await response.json() : {}
+    return { enabled: data.enabled === true, model: typeof data.model === 'string' ? data.model : '' }
+  } catch { return { enabled: false, model: '' } }
+}
+export async function askCloudAi(token: string, input: { message: string; sources: string[]; hidden?: string }): Promise<string> {
+  const response = await fetch(`${API_BASE}/ai/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ message: input.message.slice(0, 1000), sources: input.sources.slice(0, 6).map(source => source.slice(0, 1200)), ...(input.hidden ? { hidden: input.hidden.slice(0, 200) } : {}) }), signal: AbortSignal.timeout(45000) })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || typeof data.text !== 'string' || !data.text.trim()) throw new Error(typeof data.message === 'string' ? data.message : 'The AI request failed.')
+  return data.text.trim()
+}
+
 export type PdfImport = { text: string; pageCount: number; pages: { number: number; words: number }[]; warnings: string[] }
 export async function extractPdfDocument(file: File): Promise<PdfImport> {
   const body = new FormData(); body.append('file', file)

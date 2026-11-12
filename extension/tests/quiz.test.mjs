@@ -121,3 +121,13 @@ test('numbered technical concepts remain usable when they explain actual facts',
  const facts = 'ISO9001 describes requirements for quality management systems. HTTP404 means the requested resource was not found.'
  assert.deepEqual(makeQuestions(facts,5,'blank').map(q=>q.answer),['HTTP404','ISO9001'])
 })
+
+test('multiple choice asks a real question instead of blanking the sentence', () => {
+ const notes = 'Osmosis is the movement of water across a semipermeable membrane.\nMitochondria release energy through cellular respiration.\nDiffusion: particles move from high concentration to low concentration.'
+ const prompts = Object.fromEntries(makeQuestions(notes,3,'choice').map(q=>[q.answer,q]))
+ assert.equal(prompts.Osmosis.prompt,'Which of these is the movement of water across a semipermeable membrane?')
+ assert.equal(prompts.Mitochondria.prompt,'Which of these release energy through cellular respiration?')
+ assert.equal(prompts.Diffusion.prompt,'Which term matches this description: "particles move from high concentration to low concentration"?')
+ for (const q of Object.values(prompts)) { assert.equal(q.kind,'choice'); assert.ok(!q.prompt.includes('____')); assert.ok(!q.prompt.toLowerCase().includes(q.answer.toLowerCase())) }
+ assert.ok(makeQuestions(notes,1,'blank')[0].prompt.includes('________'))
+})

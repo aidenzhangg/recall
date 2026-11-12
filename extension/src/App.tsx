@@ -59,6 +59,8 @@ function App() {
   const [answers, setAnswers] = useState<string[]>([])
   const [submitted, setSubmitted] = useState(false)
   const [questionIndex, setQuestionIndex] = useState(0)
+  // Sources whose first multiple-choice pick was wrong; they still count as missed for review.
+  const [firstWrong, setFirstWrong] = useState<string[]>([])
   useEffect(() => { checkHealth().then(setServerUp) }, [])
   const [savedToken] = useState(readToken)
   const [account, setAccount] = useState<Account | null>(null)
@@ -154,7 +156,7 @@ function App() {
       catch { next = useHistory ? adaptiveQuestions(notes, count, format, review, Date.now(), focusTopic) : makeQuestions(notes, count, format, focusTopic); setQuizOrigin('Local practice - backend unavailable') }
       if (id !== generationId.current) return
       if (!next.length) { setError('No clear definitions or explanations matched. Try another focus topic or select the relevant lecture text in Notes.'); return }
-      setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false)
+      setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false); setFirstWrong([])
       setQuestionIndex(0); setTab('Practice')
     } finally { if (id === generationId.current) setGenerating(false) }
   }
@@ -162,7 +164,7 @@ function App() {
   function startPaper() {
     const next = paper.slice(0, count).map((prompt): Question => ({ kind: 'long', prompt, answer: 'Past papers do not include an answer key. Check your answer against your course notes or the mark scheme.' }))
     generationId.current++; setGenerating(false); setError('')
-    setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false); setQuestionIndex(0); setQuizOrigin('Past-paper practice - self-review')
+    setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false); setQuestionIndex(0); setFirstWrong([]); setQuizOrigin('Past-paper practice - self-review')
   }
   function openWorkspace() {
     if (typeof chrome !== 'undefined' && chrome.tabs) void chrome.tabs.create({ url: chrome.runtime.getURL('index.html') })
@@ -174,6 +176,15 @@ function App() {
   const graded = questions.filter(q => q.kind !== 'long').length
   const score = questions.filter((q, i) => isCorrect(q, answers[i])).length
   const question = questions[questionIndex]
+  const picked = question?.kind === 'choice' ? answers[questionIndex] ?? '' : ''
+  const pickedRight = !!picked && isCorrect(question, picked)
+  // With Hints Mode on a wrong pick can be retried; with it off the answer is shown and the question locks.
+  const choiceLocked = submitted || pickedRight || (!!picked && !hintsOn)
+  function choose(option: string) {
+    setAnswers(previous => previous.map((a, i) => i === questionIndex ? option : a))
+    const source = question.source
+    if (source && !isCorrect(question, option)) setFirstWrong(previous => previous.includes(source) ? previous : [...previous, source])
+  }
   const weak = useMemo(() => review.filter(item => item.misses > item.successes).sort((a, b) => (b.misses - b.successes) - (a.misses - a.successes)).slice(0, 4), [review])
   const topics = useMemo(() => [...new Set(makeQuestions(notes, 4, 'long').map(q => q.topic ?? ''))].filter(Boolean), [notes])
   const tools: { tab: Tab; title: string; text: string; planned?: boolean }[] = [
@@ -223,17 +234,18 @@ function App() {
       {!questions.length ? <>{paper.length > 0 && <div className="card paper-card"><div><strong>Past paper detected</strong><p>{paper.length} exam question{paper.length === 1 ? '' : 's'} found in this material. Answer them one at a time and review each yourself.</p></div><button className="secondary" onClick={startPaper}>Practise {Math.min(count, paper.length)} past-paper questions</button></div>}<div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><label className="focus-topic">Focus topic (optional)<input type="text" maxLength={200} value={focusTopic} onChange={e => setFocusTopic(e.target.value)} placeholder="e.g. cellular respiration" /></label><p className="muted">Uses definitions and explanations; skips course logistics. Enter a topic to narrow the lecture material.</p><label className="adaptive-control"><input type="checkbox" checked={adaptive} onChange={e => setAdaptive(e.target.checked)} /><span>Prioritize topics I missed</span></label><p className="muted">{review.filter(item => item.misses > item.successes).length} topics need practice. Written answers use self-review.</p><button className="primary" disabled={!notes.trim() || generating} onClick={() => void generate()}>{generating ? 'Preparing...' : 'Start practice'} </button></> : <>
         <p className="muted" role="status">{quizOrigin}</p><div className="quiz-progress"><div><span>Question {questionIndex + 1} of {questions.length}</span><span>{answered} answered</span></div><progress value={answered} max={questions.length} aria-label="Questions answered" /></div>
         <div className="question"><label id="question-prompt" htmlFor={`answer-${questionIndex}`}>{question.prompt}</label>
-          {question.kind === 'choice' ? <fieldset className="choice-options" aria-labelledby="question-prompt"><legend className="visually-hidden">Choose an answer</legend>{question.options?.map(option => <label key={option}><input type="radio" name={`answer-${questionIndex}`} value={option} checked={answers[questionIndex] === option} disabled={submitted} onChange={() => setAnswers(previous => previous.map((a, i) => i === questionIndex ? option : a))} /><span>{option}</span></label>)}</fieldset>
+          {question.kind === 'choice' ? <fieldset className="choice-options" aria-labelledby="question-prompt"><legend className="visually-hidden">Choose an answer</legend>{question.options?.map(option => <label key={option} className={option === picked ? (pickedRight ? 'choice-right' : 'choice-wrong') : picked && !pickedRight && !hintsOn && isCorrect(question, option) ? 'choice-right' : undefined}><input type="radio" name={`answer-${questionIndex}`} value={option} checked={picked === option} disabled={choiceLocked} onChange={() => choose(option)} /><span>{option}</span></label>)}</fieldset>
           : question.kind === 'long' ? <textarea id={`answer-${questionIndex}`} value={answers[questionIndex]} disabled={submitted} placeholder="Write your explanation" onChange={e => setAnswers(previous => previous.map((a, i) => i === questionIndex ? e.target.value : a))} />
           : <input id={`answer-${questionIndex}`} autoComplete="off" value={answers[questionIndex]} disabled={submitted} placeholder="Your answer" onChange={e => setAnswers(previous => previous.map((a, i) => i === questionIndex ? e.target.value : a))} />}
-          {submitted && (question.kind === 'long' ? <div className="feedback"><p>Self-review: this response is not automatically scored.</p>{hintsOn ? <p>Compare your explanation with your notes or ask for a hint.</p> : <><strong>Reference answer</strong><p>{question.answer}</p></>}</div> : <p className={isCorrect(question, answers[questionIndex]) ? 'correct' : 'feedback'}>{isCorrect(question, answers[questionIndex]) ? 'Correct.' : hintsOn ? 'Incorrect. Ask for a hint or retry.' : `Answer: ${question.answer}`}</p>)}
+          {question.kind === 'choice' && picked && <p className={pickedRight ? 'correct choice-feedback' : 'feedback choice-feedback choice-feedback--wrong'} role="status">{pickedRight ? 'Correct!' : hintsOn ? 'Not quite. Pick another option or ask for a hint.' : `Not quite. The answer is ${question.answer}.`}</p>}
+          {submitted && question.kind !== 'choice' && (question.kind === 'long' ? <div className="feedback"><p>Self-review: this response is not automatically scored.</p>{hintsOn ? <p>Compare your explanation with your notes or ask for a hint.</p> : <><strong>Reference answer</strong><p>{question.answer}</p></>}</div> : <p className={isCorrect(question, answers[questionIndex]) ? 'correct' : 'feedback'}>{isCorrect(question, answers[questionIndex]) ? 'Correct.' : hintsOn ? 'Incorrect. Ask for a hint or retry.' : `Answer: ${question.answer}`}</p>)}
         </div>
         <div className="question-navigation"><button className="text-button" disabled={questionIndex === 0} onClick={() => setQuestionIndex(i => i - 1)}> Previous</button><button className="text-button" disabled={questionIndex === questions.length - 1} onClick={() => setQuestionIndex(i => i + 1)}>Next </button></div>
-        {submitted ? <><p className="result" role="status">{graded ? `${score} of ${graded} auto-scored answers correct` : 'Responses ready for self-review'}{questions.length > graded && graded > 0 ? `; ${questions.length - graded} for self-review` : ''}</p><button className="primary" onClick={() => setSubmitted(false)}>Retry answers </button></> : <button className="primary" disabled={answered !== questions.length} onClick={() => { setSubmitted(true); setReview(previous => recordAttempt(previous, questions, answers)); recordStudyDay() }}>Check all answers </button>}
+        {submitted ? <><p className="result" role="status">{graded ? `${score} of ${graded} auto-scored answers correct` : 'Responses ready for self-review'}{questions.length > graded && graded > 0 ? `; ${questions.length - graded} for self-review` : ''}</p><button className="primary" onClick={() => setSubmitted(false)}>Retry answers </button></> : <button className="primary" disabled={answered !== questions.length} onClick={() => { setSubmitted(true); setReview(previous => recordAttempt(previous, questions, answers.map((answer, i) => firstWrong.includes(questions[i].source ?? '') ? '' : answer))); recordStudyDay() }}>Check all answers </button>}
         <div className="quiz-tools"><button className="text-button" onClick={() => navigate('Tutor')}>{hintsOn ? 'Ask for a hint' : 'Ask Recall AI'}</button><button className="text-button" onClick={() => { setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0) }}>New session</button></div>
       </>}
     </section>}
-    {tab === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={questions.map(q => q.prompt).join()} questions={questions} current={questionIndex} notes={notes} hintsOn={hintsOn} topics={topics} />{questions.length > 0 && <button className="text-button return-link" onClick={() => navigate('Practice')}>Back to your quiz</button>}</section>}
+    {tab === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={questions.map(q => q.prompt).join()} questions={questions} current={questionIndex} notes={notes} hintsOn={hintsOn} topics={topics} token={account?.token} />{questions.length > 0 && <button className="text-button return-link" onClick={() => navigate('Practice')}>Back to your quiz</button>}</section>}
     </div>
     <footer className="app-footer">
       <span role="status">{serverUp === null ? 'Connecting' : serverUp ? 'Backend connected' : 'Local mode'}</span>

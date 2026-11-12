@@ -39,7 +39,7 @@ public class StudyController {
                 if (options.isEmpty()) kind = "blank";
                 else options.add(questions.size() % (options.size() + 1), term);
             }
-            questions.add(new Question(prompt, term, kind, options, source, term));
+            questions.add(new Question(kind.equals("choice") ? StudyContent.choicePrompt(source, term, prompt) : prompt, term, kind, options, source, term));
         }
         return questions;
     }

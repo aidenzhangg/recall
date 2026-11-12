@@ -80,4 +80,13 @@ class StudyControllerTests {
         var technical = StudyController.generateAt(new StudyController.Generation("ISO9001 describes requirements for quality management systems. HTTP404 means the requested resource was not found.", 5, "blank", List.of()), 1000);
         assertThat(technical).extracting(StudyController.Question::answer).containsExactly("HTTP404", "ISO9001");
     }
+    @org.junit.jupiter.api.Test void multipleChoiceAsksARealQuestionInsteadOfBlankingTheSentence() {
+        String notes = "Osmosis is the movement of water across a semipermeable membrane.\nMitochondria release energy through cellular respiration.\nDiffusion: particles move from high concentration to low concentration.";
+        var questions = StudyController.generateAt(new StudyController.Generation(notes, 3, "choice", List.of()), 1000);
+        assertThat(questions).extracting(StudyController.Question::prompt).containsExactlyInAnyOrder(
+            "Which of these is the movement of water across a semipermeable membrane?",
+            "Which of these release energy through cellular respiration?",
+            "Which term matches this description: \"particles move from high concentration to low concentration\"?");
+        assertThat(questions).allSatisfy(question -> assertThat(question.options()).contains(question.answer()));
+    }
 }
