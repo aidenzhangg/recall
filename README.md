@@ -60,6 +60,17 @@ PostgreSQL is bound to the local machine on port 5432. The profile uses the loca
 
 Profiles use separate account stores. Existing file accounts are not automatically migrated to PostgreSQL; switching back restores access to the original files. Do not delete them. PostgreSQL accounts and workspace snapshots persist; login sessions remain in memory and require signing in again after a backend restart. The initial table is created idempotently; a schema migration tool and a bounded connection pool are future production work.
 
+### Sign in with Google (optional)
+
+Email and password accounts work without any setup. Passwords are never stored in readable form: the backend keeps only a salted PBKDF2-HMAC-SHA256 hash (210,000 iterations). To also allow **Continue with Google**:
+
+1. In Google Cloud Console, create an OAuth client ID of type **Web application**.
+2. Load the extension, open `chrome://extensions`, and copy Recall's ID. Add `https://<that-id>.chromiumapp.org/` as an authorised redirect URI on the client.
+3. Give the backend the client ID through the environment, in the same terminal you start it from. Do not put it in a file in this repository.
+4. Start the backend and reload the extension so it picks up the new `identity` permission.
+
+The client ID is a public identifier, not a secret; no client secret or API key is used. The extension receives a Google ID token, and the backend asks Google to verify it and checks that it was issued for this client and this sign-in attempt. A Google sign-in with the same verified email as an existing Recall account opens that account. Until a client ID is set, the button explains that Google sign-in is not set up.
+
 ### Recall Connect: phone to desktop
 
 1. Sign in on the extension and open **Connect**.

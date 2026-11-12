@@ -21,11 +21,30 @@ export function parseProgress(raw: string): SavedProgress {
 export function readToken(): string | null { try { return sessionStorage.getItem('recall-session') } catch { return null } }
 export function rememberToken(token: string | null) { try { if (token) sessionStorage.setItem('recall-session', token); else sessionStorage.removeItem('recall-session') } catch { /* Session stays in memory. */ } }
 export async function accountRequest(path: string, body?: unknown, token?: string, signal?: AbortSignal) {
-  const response = await fetch(`${API_BASE}/account/${path}`, { method: body === undefined ? 'GET' : 'POST',
+  let response: Response
+  try { response = await fetch(`${API_BASE}/account/${path}`, { method: body === undefined ? 'GET' : 'POST',
     headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: signal ?? AbortSignal.timeout(15000) })
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: signal ?? AbortSignal.timeout(15000) }) }
+  catch (failure) {
+    if (signal?.aborted) throw failure
+    throw new Error('Cannot reach the Recall backend. Run start-backend.cmd in the recall folder, wait for "Started BackendApplication", then try again.', { cause: failure })
+  }
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(response.status === 400 ? 'Check your details. New passwords need at least 10 characters.' : data.message ?? data.detail ?? (response.status === 401 ? 'Please sign in again.' : response.status === 409 ? 'An account already exists for this email.' : response.status === 429 ? 'Too many attempts. Please wait five minutes.' : 'Account storage is unavailable. Try again.'))
   return data
+}
+/** Opens Google's sign-in window from the extension and exchanges the resulting ID token for a Recall session. */
+export async function googleSignIn(): Promise<{ token: string; user: User; progress?: string | null }> {
+  const { clientId } = await accountRequest('google')
+  if (typeof clientId !== 'string' || !clientId) throw new Error('Google sign-in is not set up yet. Set RECALL_GOOGLE_CLIENT_ID for the backend and restart it. The README has the steps.')
+  if (typeof chrome === 'undefined' || !chrome.identity?.launchWebAuthFlow) throw new Error('Google sign-in works in the installed Chrome extension. Reload Recall at chrome://extensions and try again.')
+  const nonce = crypto.randomUUID()
+  const query = new URLSearchParams({ client_id: clientId, response_type: 'id_token', redirect_uri: chrome.identity.getRedirectURL(), scope: 'openid email profile', nonce, prompt: 'select_account' })
+  let redirect: string | undefined
+  try { redirect = await chrome.identity.launchWebAuthFlow({ url: `https://accounts.google.com/o/oauth2/v2/auth?${query}`, interactive: true }) }
+  catch (failure) { throw new Error('Google sign-in was cancelled or blocked. Check that the redirect address of this extension is allowed for the client ID.', { cause: failure }) }
+  const idToken = redirect ? new URLSearchParams(new URL(redirect).hash.slice(1)).get('id_token') : null
+  if (!idToken) throw new Error('Google did not return a sign-in token. Try again.')
+  return accountRequest('google', { idToken, nonce })
 }
 export async function saveProgress(account: Account, progress: SavedProgress, signal?: AbortSignal) { return accountRequest('progress', { progress: JSON.stringify(progress) }, account.token, signal) }

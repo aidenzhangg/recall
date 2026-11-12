@@ -53,6 +53,25 @@ public class AccountStore {
         save(key, properties);
         return loginResult(key, properties);
     }
+    /**
+     * Signs in a user whose email address an identity provider has verified, creating the account on first use.
+     * A new account gets a random password hash, so it cannot be opened with a password.
+     */
+    public synchronized Login externalLogin(String name, String email) throws IOException {
+        email = email.trim().toLowerCase(Locale.ROOT);
+        String key = digest(email);
+        if (exists(key)) return loginResult(key, load(key));
+        var properties = new Properties();
+        byte[] salt = new byte[16]; random.nextBytes(salt);
+        byte[] unguessable = new byte[32]; random.nextBytes(unguessable);
+        properties.setProperty("id", UUID.randomUUID().toString());
+        properties.setProperty("name", name.trim());
+        properties.setProperty("email", email);
+        properties.setProperty("salt", Base64.getEncoder().encodeToString(salt));
+        properties.setProperty("password", Base64.getEncoder().encodeToString(hashPassword(Base64.getEncoder().encodeToString(unguessable), salt)));
+        save(key, properties);
+        return loginResult(key, properties);
+    }
     public synchronized Login login(String email, String password) throws IOException {
         String key = digest(email.trim().toLowerCase(Locale.ROOT));
         long now = System.currentTimeMillis();

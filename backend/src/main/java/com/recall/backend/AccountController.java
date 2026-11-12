@@ -12,7 +12,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/account")
 public class AccountController {
     private final AccountStore store;
-    public AccountController(AccountStore store) { this.store = store; }
+    private final GoogleIdentity google;
+    public AccountController(AccountStore store, GoogleIdentity google) { this.store = store; this.google = google; }
     @ModelAttribute
     public void preventCaching(jakarta.servlet.http.HttpServletResponse response) { response.setHeader("Cache-Control", "no-store"); }
     public record Registration(@NotBlank @Size(max=80) String name,
@@ -26,6 +27,15 @@ public class AccountController {
     @PostMapping("/login")
     public AccountStore.Login login(@Valid @RequestBody Credentials request) throws IOException {
         return store.login(request.email(), request.password());
+    }
+    public record GoogleToken(@NotBlank @Size(max=4096) String idToken, @NotBlank @Size(min=16, max=128) String nonce) {}
+    /** The OAuth client ID is public; the extension needs it to open Google's sign-in page. */
+    @GetMapping("/google")
+    public Map<String, String> googleConfig() { return Map.of("clientId", google.clientId()); }
+    @PostMapping("/google")
+    public AccountStore.Login googleLogin(@Valid @RequestBody GoogleToken request) throws IOException {
+        GoogleIdentity.Identity identity = google.verify(request.idToken(), request.nonce());
+        return store.externalLogin(identity.name(), identity.email());
     }
     @GetMapping("/me")
     public AccountStore.Workspace me(@RequestHeader(value="Authorization", defaultValue="") String authorization) throws IOException {
