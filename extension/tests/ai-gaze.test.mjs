@@ -56,3 +56,23 @@ test('focus score counts time on screen, ignores blinks, and checks in once afte
   run('screen', 1); assert.equal(snapshot.awaySeconds, 0)
   now += 60000; snapshot = tracker.update('none', now); assert.equal(snapshot.awaySeconds, 0)
 })
+
+test('a chat model is chosen from what the key can use, and replies can be streamed', async () => {
+  const { pickModel, complete } = await load('ai')
+  assert.equal(pickModel('groq', ['gemma2-9b-it', 'llama-3.1-8b-instant', 'llama-3.3-70b-versatile']), 'llama-3.3-70b-versatile')
+  assert.equal(pickModel('gemini', ['gemini-2.0-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-flash-preview-tts', 'gemini-2.5-pro']), 'gemini-2.5-flash')
+  assert.equal(pickModel('openrouter', ['openai/gpt-4o', 'meta-llama/llama-3.3-70b-instruct:free']), 'meta-llama/llama-3.3-70b-instruct:free')
+  assert.equal(pickModel('custom', []), '')
+  const original = globalThis.fetch
+  const seen = []
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(JSON.parse(init.body).stream, true)
+    const body = 'data: {"choices":[{"delta":{"content":"Hel"}}]}\n\ndata: {"choices":[{"delta":{"content":"lo"}}]}\n\ndata: [DONE]\n\n'
+    return new Response(body, { headers: { 'content-type': 'text/event-stream' } })
+  }
+  try {
+    const text = await complete([{ role: 'user', content: 'hi' }], { provider: 'groq', model: 'm', key: 'test-value', baseUrl: '' }, value => seen.push(value))
+    assert.equal(text, 'Hello')
+    assert.deepEqual(seen, ['Hel', 'Hello'])
+  } finally { globalThis.fetch = original }
+})

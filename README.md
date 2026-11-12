@@ -10,7 +10,7 @@ Recall runs entirely inside Chrome. Nobody has to start a server: notes, quizzes
 - **Recall AI chat.** A real conversation about your notes: explanations in plain words, comparisons, follow-up questions, "quiz me". It reads the relevant parts of your notes and writes its own answer rather than pasting lines back, then shows which note lines it leaned on. With a quiz question selected and Hints Mode on, it gives stepped hints and never the answer; a reply that would leak the answer is thrown away.
 - **AI-written quizzes and flashcards.** With an AI engine on, quizzes are written from the meaning of your notes (real questions, plausible wrong options, a one-line explanation after you answer) and aimed at the topics you have missed. Flashcards can be written the same way.
 - **Three AI engines, no key in the code.** (1) Chrome's on-device model where available: free, private, one download, no key. (2) Your own key from a provider with a free tier (Groq, Google Gemini, OpenRouter) or any OpenAI-compatible service, entered under **AI settings**. (3) No AI at all: Recall falls back to rule-based questions and a search of your notes, and says so.
-- **Practice.** Multiple choice (marked the moment you pick), fill in the blank, long answer or mixed. Misses and correct answers are tracked per passage, missed material comes back first, and a later review is scheduled after correct answers. This is a rule-based scheduler, not a trained model.
+- **Practice.** Multiple choice, fill in the blank, long answer or mixed. Every question is marked as soon as you answer it, written answers get AI feedback when an AI is connected, and the session ends on a results page that lists each question, your answer and the correct one. Only first-try answers score. Misses and correct answers are tracked per passage, missed material comes back first, and a later review is scheduled after correct answers. This is a rule-based scheduler, not a trained model.
 - **Camera focus.** An optional check on the focus timer that uses the webcam to estimate whether you are looking at the screen: looking at screen, looking away, eyes closed or no face. It shows screen attention as time looking at the screen divided by time tracked, counts how long you have looked away, and after the timeout you choose (15 seconds to 2 minutes) it chimes, pauses the timer and asks if you are still there.
 - **Site blocker.** Block distracting domains and their subdomains with one switch, quick-add buttons for common sites and a list you manage. It uses Chrome's blocking rules and records no browsing history.
 - **Dashboard.** Missed topics with one-click targeted practice and search links (Wikipedia, Khan Academy, YouTube, MIT OpenCourseWare). The links open a search; they are not curated recommendations.
@@ -21,9 +21,26 @@ Recall runs entirely inside Chrome. Nobody has to start a server: notes, quizzes
 
 The interface is a dark or light side-panel workspace set in Outfit and IBM Plex Sans.
 
-## Stack
+## Tech stack
 
-React, TypeScript, Vite, plain CSS, Chrome Manifest V3, pdf.js, MediaPipe Face Landmarker, and an optional Java 21 / Spring Boot backend with JDBC/PostgreSQL, PDFBox and Maven. No API key is stored in this repository or in the built extension.
+| Part | What it uses |
+| --- | --- |
+| Extension | React 19, TypeScript, Vite, plain CSS, Chrome Manifest V3 (side panel, storage, declarativeNetRequest, identity) |
+| PDF reading | pdf.js (`pdfjs-dist`), in the browser |
+| Camera focus | MediaPipe Tasks Vision **Face Landmarker**, running as WebAssembly in the browser |
+| AI chat, hints, quizzes, flashcards | Chrome's built-in Prompt API (Gemini Nano), or a hosted model through an OpenAI-compatible API: Groq, Google Gemini, OpenRouter or OpenAI |
+| Optional backend | Java 21, Spring Boot, JDBC with HikariCP, PDFBox, Maven |
+| Optional database | PostgreSQL, for example Supabase or Neon |
+| Optional hosting | AWS Elastic Beanstalk (Java / Corretto 21) |
+| Tests and CI | node:test, ESLint, JUnit, H2, GitHub Actions |
+
+### Models: nothing here was trained by this project
+
+Recall does not train, fine-tune or ship a model of its own, and it never uses your notes or camera to train anything.
+
+- **Face Landmarker** is a pretrained model published by Google (MediaPipe). Recall downloads it as is and only reads its output: face landmark positions and eye "blendshape" scores. The rules that turn those numbers into "looking at screen", "looking away" or "eyes closed" are plain hand-written thresholds in `extension/src/gaze.ts`, not machine learning.
+- **Language models** (Gemini Nano on device, or whichever model you pick at Groq, Gemini, OpenRouter or OpenAI) are pretrained by their providers. Recall sends them a prompt and shows the reply.
+- **Review scheduling and the fallback quiz generator** are rule-based code.
 
 ## Run it
 
@@ -38,18 +55,24 @@ Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and
 
 Rebuild and reload the extension after source changes. For frontend development, use `npm run dev --prefix extension`; the installed extension uses built assets, not Vite hot reload.
 
-### Turning on AI
+### Turning on AI (getting a free key)
 
-Open **Recall AI**, then **AI settings**.
+Recall AI is the first screen. Until an AI is connected it can only search your notes, and it shows the setup right there:
 
-- **On-device model.** If your Chrome offers its built-in model, a **Turn on** button appears. It downloads once and then runs on your computer.
-- **Your own key.** Pick a provider, create a free key on that provider's site, paste it, choose **Find models**, pick one and **Save**. The key is kept in this browser's storage and sent only to the provider you picked, together with your question and the relevant parts of your notes. Free tiers have their own limits and terms. Use **Remove key** to delete it.
+1. Pick a provider. **Groq** is the quickest; **Google Gemini** and **OpenRouter** also have free tiers.
+2. Press the button to open that provider's key page and sign in:
+   - Groq: `https://console.groq.com/keys`, then **Create API Key**. The key starts with `gsk_`.
+   - Google Gemini: `https://aistudio.google.com/apikey`, then **Create API key**.
+   - OpenRouter: `https://openrouter.ai/settings/keys`, then **Create Key**. Free models end in `:free`.
+3. Copy the key, paste it into Recall and press **Connect**. Recall checks the key, picks a chat model the key can use, and replies start streaming in.
 
-Anyone who can open this browser profile can use a saved key, so do not save one on a shared computer.
+The key is saved only in this browser's storage and is sent only to the provider you picked, along with your question and the relevant parts of your notes. It is never written into this repository or the built extension. Free tiers have rate limits and their own terms. **AI settings** has **Remove key**, a model picker, and (where Chrome offers it) the on-device model, which needs no key at all. Do not save a key on a shared computer.
+
+With an AI connected: chat answers are written by the model, quiz hints explain the idea in three steps without giving the answer (the answer is shown if you ask after the third hint, or at once with Hints Mode off), quizzes and flashcards are written from your notes, and written answers get short feedback.
 
 ### Camera focus
 
-Open **Focus** and switch on **Camera focus**. Chrome asks for camera permission; if the side panel cannot show the prompt, open Recall in a full tab once and allow it there. The first start downloads Google's face-landmark model (a few megabytes), so it needs a connection that one time. Frames are analysed on your computer and are never saved or uploaded.
+Open **Focus** and switch on **Camera focus**. It works in the side panel. Chrome cannot show its camera question inside a side panel, so the first time Recall shows **Allow camera**, which opens a tab where Chrome asks once; choose Allow and camera focus turns on in the panel by itself. The first start also downloads Google's face-landmark model (a few megabytes), so it needs a connection that one time.
 
 It estimates head direction and eye closure, not what you are thinking, so treat the percentage as a rough signal. A browser extension is not allowed to lock the computer, so Recall pauses the timer and checks in instead.
 
@@ -63,6 +86,18 @@ cd backend
 ```
 
 On Windows you can instead run `.\start-backend.cmd` from the repository root (or double-click it). `mvnw.cmd` must be run as `.\mvnw.cmd` from inside `backend`. The backend is ready when the log shows `Started BackendApplication`. Health check: `http://localhost:8080/api/health`.
+
+### How Supabase and AWS fit in
+
+Neither is needed to use Recall. They matter only if you want accounts that follow people between computers:
+
+```
+Chrome extension  ->  Recall backend (Spring Boot jar on AWS Elastic Beanstalk)  ->  Supabase PostgreSQL
+```
+
+1. **Supabase** holds the accounts table. Create a free project, copy the Session pooler address, user and password, and give them to the backend (see Database below). You never talk to Supabase from the extension, so no Supabase key goes in it.
+2. **AWS** runs the backend jar so it has a public HTTPS address (see Hosting below). The database values go in as environment properties there.
+3. **The extension** is built with `VITE_API_BASE` set to that address, so sign-in and sync use your hosted backend instead of `localhost`.
 
 ### Private settings
 
@@ -128,9 +163,22 @@ Transfer is **through the backend**, including a local backend on your laptop. I
 
 Set `VITE_API_BASE` at build time to the HTTPS backend `/api` URL. The build adds that origin to `host_permissions` in the built manifest. The default permission covers only localhost:8080. The phone page is served by the same backend, so its uploads use same-origin requests.
 
+## Data disclaimer
+
+Recall is a student project, provided as is with no warranty. Read this before putting anything sensitive in it.
+
+- **Your notes and progress** stay in this browser's storage unless you sign in. They are not encrypted there, and clearing browser data or removing the extension deletes them.
+- **AI.** With a provider key connected, your questions, the relevant parts of your notes, quiz questions and written answers are sent from your browser to that provider (Groq, Google, OpenRouter or OpenAI) and handled under that provider's terms and privacy policy, which may allow logging or, on some free tiers, use for improving their models. Do not put personal, confidential or exam-restricted material in notes you use with a hosted model. With Chrome's on-device model, nothing leaves the computer.
+- **Camera.** Frames are processed in memory on your computer to get face landmarks and are then discarded. No image, video or face data is saved, uploaded, or used to identify anyone. The only request made is the one-time download of the model file from Google. Turning the switch off stops the camera.
+- **Your API key** is stored unencrypted in this browser profile. Anyone with access to the profile can read it. You are responsible for any usage on your key.
+- **Accounts (optional backend).** Email, name, a salted PBKDF2 password hash and your progress snapshot are stored on whichever backend and database you or the host configure. Whoever runs that backend can read the stored notes. This application does not encrypt data at rest.
+- **Site blocker** rules stay in the browser; no browsing history is recorded or sent.
+- **Accuracy.** AI answers, hints, marks and generated questions can be wrong. The attention percentage is an estimate of where your face points, not a measure of focus. Do not rely on either for grades, assessment or anything medical.
+- Recall collects no analytics and has no server of its own. It is not affiliated with Google, Groq, OpenRouter, OpenAI, Supabase or AWS.
+
 ## Privacy and limits
 
-Without an account, notes and progress stay in this browser. With an AI key saved, your question and the relevant parts of your notes go straight from the browser to the provider you chose; with the on-device model nothing leaves the computer. Camera frames never leave the computer. When signed in, progress snapshots are stored on the backend you configured, and quiz requests may be sent to it. Passwords use salted PBKDF2 hashes. Local files and PostgreSQL application data are not encrypted by this application; secure storage and backups at deployment time.
+Passwords use salted PBKDF2 hashes. Local files and PostgreSQL application data are not encrypted by this application; secure storage and backups at deployment time.
 
 Pairing capabilities are kept in URL fragments on the phone link, removed from its address bar after loading, and sent in a header rather than a query string. The server retains a hash of the capability. Keep pairing links private. Uploads are accessible only through the paired account's authenticated inbox. Validation errors return generic messages instead of echoing rejected values.
 

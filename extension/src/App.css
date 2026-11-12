@@ -306,3 +306,27 @@ button.flashcard:hover { border-color: var(--accent); }
 }
 @media (max-width: 360px) { .panel { column-gap: 10px; padding-inline: 10px; } .save-status { max-width: 110px; } .session-stats dd { font-size: 16px; } }
 @media (forced-colors: active) { select { appearance: auto; background-image: none; } .tab.active { outline: 1px solid Highlight; } }
+
+/* ---------- Results and AI setup ---------- */
+.results { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.results-score { display: grid; place-items: center; min-width: 76px; height: 76px; padding: 0 10px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font: 600 22px var(--font-display); }
+.results p { margin-top: 3px; color: var(--muted); font-size: 12.5px; }
+.review-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.review-item { display: grid; gap: 6px; padding: 13px 15px; border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: 13px; overflow-wrap: anywhere; }
+.review-item--right { border-left-color: var(--accent); }
+.review-item--wrong { border-left-color: var(--danger); }
+.review-prompt { font-weight: 600; font-size: 13.5px; }
+.review-item span { display: block; color: var(--muted); font: 10.5px var(--font-mono); text-transform: uppercase; letter-spacing: .4px; }
+.feedback strong { display: block; margin: 10px 0 2px; color: var(--ink); font-size: 12px; }
+.connect { display: grid; gap: 12px; width: 100%; max-width: 460px; text-align: left; }
+.connect-providers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.connect-providers button { display: grid; gap: 1px; padding: 9px 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--field); font-size: 12.5px; font-weight: 600; }
+.connect-providers button span { color: var(--muted); font-size: 10.5px; font-weight: 400; }
+.connect-providers button[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); }
+.connect-steps { display: grid; gap: 8px; margin: 0; padding-left: 20px; color: var(--muted); font-size: 12.5px; }
+.connect-row { display: flex; gap: 8px; }
+.connect-row input { flex: 1; min-width: 0; }
+.chat-empty .connect p { max-width: none; }
+.advanced summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.advanced[open] summary { margin-bottom: 12px; }
+.advanced .button-row { margin-top: 12px; }

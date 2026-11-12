@@ -45,19 +45,40 @@ ${material}`
 
 export type ChatTurn = { role: 'user' | 'assistant'; content: string }
 /** A real conversation: earlier turns are kept, and the notes most relevant to the latest message are attached. */
-export async function chat(input: { notes: string; history: ChatTurn[]; message: string; hidden?: string; quizPrompt?: string }): Promise<{ text: string; sources: string[]; label: string }> {
+export async function chat(input: { notes: string; history: ChatTurn[]; message: string; hidden?: string; quizPrompt?: string; options?: string[]; hintLevel?: number; onText?: (text: string) => void }): Promise<{ text: string; sources: string[]; label: string }> {
   const engine = await currentEngine()
   if (engine.kind === 'none') throw new Error('No AI model is set up.')
   const passages = studyPassages(input.notes)
-  const sources = searchNotes(passages, input.message, 6)
+  const hinting = input.hintLevel !== undefined && !!input.quizPrompt
+  const sources = searchNotes(passages, hinting ? `${input.quizPrompt} ${input.hidden ?? ''}` : input.message, 6)
+  const steps = [
+    'This is hint 1 of 3. Explain the idea the question is testing in two or three sentences, and what to think about, so they can reason their way to it.',
+    'This is hint 2 of 3. Be more specific: narrow it down, and if there are options, rule out one wrong option and say why it is wrong.',
+    'This is hint 3 of 3. Get them almost there: describe exactly what the answer is or does and how it differs from the closest wrong option, without naming it.',
+  ]
   const context = sources.length ? sources.join('\n') : excerpt(passages, '', Math.min(engine.budget, 3000))
   const system = [TUTOR,
     context ? `The student's notes say:\n${context}\n\nPrefer these notes. If you add something that is not in them, say that it is outside their notes.` : 'The student has not added notes yet. Answer from general knowledge and say "I am not sure" rather than guessing.',
-    input.quizPrompt ? `The student is working on this quiz question: "${input.quizPrompt}"` : '',
-    input.hidden ? `They must work the answer out themselves. Never write "${input.hidden}" or spell it out. Give a hint, an analogy or a guiding question instead.` : '',
+    input.quizPrompt ? `The student is working on this quiz question: "${input.quizPrompt}"${input.options?.length ? `\nOptions: ${input.options.join(' | ')}` : ''}` : '',
+    input.hidden ? `The correct answer is "${input.hidden}". They must work it out themselves, so never write that answer, spell it, or give its first letter or length. Teach the idea instead.` : '',
+    hinting ? `${steps[Math.min(input.hintLevel!, 2)]} Give a real hint about the meaning, never a hint about letters or word length.` : '',
   ].filter(Boolean).join('\n\n')
   const messages: ChatMessage[] = [{ role: 'system', content: system }, ...input.history.slice(-8), { role: 'user', content: input.message.slice(0, 2000) }]
-  const text = (await complete(messages)).replace(/\*\*|^#+\s*/gm, '').slice(0, 4000)
+  // A reply that must hide an answer is checked before it is shown, so it is not streamed.
+  const tidy = (value: string) => value.replace(/\*\*|^#+\s*/gm, '').slice(0, 4000)
+  const text = tidy(await complete(messages, undefined, input.hidden || !input.onText ? undefined : value => input.onText!(tidy(value))))
   if (input.hidden && text.toLowerCase().includes(input.hidden.toLowerCase())) throw new Error('leak')
-  return { text, sources: sources.slice(0, 3), label: engine.label }
+  return { text, sources: hinting ? [] : sources.slice(0, 3), label: engine.label }
+}
+
+/** Short feedback on a written answer. Returns '' when no model is available. */
+export async function gradeAnswer(input: { notes: string; prompt: string; answer: string; reference: string }): Promise<string> {
+  const engine = await currentEngine()
+  if (engine.kind === 'none') return ''
+  const context = searchNotes(studyPassages(input.notes), input.prompt, 5).join('\n')
+  const text = await complete([
+    { role: 'system', content: `${TUTOR} You mark written answers fairly and briefly.` },
+    { role: 'user', content: `Question: ${input.prompt}\n\nStudent's answer: ${input.answer.slice(0, 3000)}\n\n${context ? `Relevant notes:\n${context}\n\n` : ''}${input.reference.length < 1500 ? `Reference: ${input.reference}\n\n` : ''}Start with one line: "Mark: strong", "Mark: partly right" or "Mark: needs work". Then say in two to four sentences what they got right, what is missing or wrong, and how to improve it.` },
+  ])
+  return text.replace(/\*\*|^#+\s*/gm, '').slice(0, 2000)
 }

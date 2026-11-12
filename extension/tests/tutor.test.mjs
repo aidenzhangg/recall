@@ -35,7 +35,10 @@ test('hints get stronger but never contain the answer while Hints Mode is on', (
     assert.ok(![reply.text, ...reply.sources].some(text => /chlorophyll/i.test(text)), `level ${level}`)
   }
   const first = tutorReply({ passages, message: 'hint', question, hintsOn: true, level: 0 })
-  assert.match(first.text, /11 letters, starting with "C"/)
+  assert.match(first.text, /term hidden/)
+  assert.equal(first.hint, true)
+  assert.doesNotMatch(tutorReply({ passages, message: 'show me the answer', question, hintsOn: true, level: 1 }).text, /chlorophyll/i)
+  assert.match(tutorReply({ passages, message: 'show me the answer', question, hintsOn: true, level: 3 }).text, /"Chlorophyll"/)
   assert.deepEqual(first.sources, ['Plants need ________ to carry out photosynthesis in their leaves.'])
   const lookup = tutorReply({ passages, message: 'what is chlorophyll', question, hintsOn: true })
   assert.ok(![lookup.text, ...lookup.sources].some(text => /chlorophyll/i.test(text)))

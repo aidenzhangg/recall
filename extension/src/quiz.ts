@@ -80,9 +80,12 @@ function generateQuestions(notes: string, count: number, format: QuizFormat, foc
     if (kind === 'long') return { kind, source, topic: term, prompt: `Explain "${term}" using your notes.`, answer: source }
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const prompt = source.replace(new RegExp(`(?<![A-Za-z])${escaped}(?![A-Za-z])`, 'gi'), '________')
-    const options = pool.filter(word => word.toLowerCase() !== term.toLowerCase()).slice(0, 3)
+    // Rotate through the other terms so every question does not show the same wrong options.
+    const others = pool.filter(word => word.toLowerCase() !== term.toLowerCase())
+    const start = others.length ? (index * 3) % others.length : 0
+    const options = [...others.slice(start), ...others.slice(0, start)].slice(0, 3)
     if (kind === 'blank' || !options.length) return { kind: 'blank', source, topic: term, prompt, answer: term }
-    options.splice(index % (options.length + 1), 0, term)
+    options.splice((index * 7 + term.length) % (options.length + 1), 0, term)
     return { kind, source, topic: term, prompt: choicePrompt(source, term) || prompt, answer: term, options }
   })
 }

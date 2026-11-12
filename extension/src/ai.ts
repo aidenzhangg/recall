@@ -8,12 +8,26 @@ export type Provider = 'groq' | 'gemini' | 'openrouter' | 'openai' | 'custom'
 export type AiSettings = { provider: Provider; model: string; key: string; baseUrl: string }
 export type Engine = { kind: 'key' | 'device' | 'none'; label: string; budget: number }
 
-export const PROVIDERS: Record<Provider, { name: string; url: string; note: string }> = {
-  groq: { name: 'Groq', url: 'https://api.groq.com/openai/v1', note: 'Free tier' },
-  gemini: { name: 'Google Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/openai', note: 'Free tier' },
-  openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1', note: 'Has free models' },
-  openai: { name: 'OpenAI', url: 'https://api.openai.com/v1', note: 'Paid' },
-  custom: { name: 'Other (OpenAI-compatible)', url: '', note: 'Any compatible address' },
+export const PROVIDERS: Record<Provider, { name: string; url: string; note: string; keyPage: string }> = {
+  groq: { name: 'Groq', url: 'https://api.groq.com/openai/v1', note: 'Free tier', keyPage: 'https://console.groq.com/keys' },
+  gemini: { name: 'Google Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/openai', note: 'Free tier', keyPage: 'https://aistudio.google.com/apikey' },
+  openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1', note: 'Has free models', keyPage: 'https://openrouter.ai/settings/keys' },
+  openai: { name: 'OpenAI', url: 'https://api.openai.com/v1', note: 'Paid', keyPage: 'https://platform.openai.com/api-keys' },
+  custom: { name: 'Other (OpenAI-compatible)', url: '', note: 'Any compatible address', keyPage: '' },
+}
+/** Chooses a sensible general chat model from what the key can actually use, so nobody has to know model names. */
+export function pickModel(provider: Provider, ids: string[]): string {
+  const usable = ids.filter(id => !/preview|exp|live|vision|search|thinking|native|computer|robotics|learnlm|aqa|compound|speech|transcri/i.test(id))
+  const pool = usable.length ? usable : ids
+  const wanted = provider === 'groq' ? [/llama-3\.3-70b/, /llama.*70b/, /llama/, /gemma|qwen/]
+    : provider === 'gemini' ? [/^gemini-[\d.]+-flash$/, /flash(?!-lite)/, /flash/, /gemini/]
+    : provider === 'openrouter' ? [/llama-3\.3-70b.*:free$/, /:free$/]
+    : provider === 'openai' ? [/^gpt-[\d.]+o?-mini$/, /mini/, /^gpt/] : []
+  for (const pattern of wanted) {
+    const hits = pool.filter(id => pattern.test(id)).sort().reverse()
+    if (hits.length) return hits[0]
+  }
+  return pool[0] ?? ''
 }
 const STORE = 'recall-ai-settings'
 export function readAiSettings(): AiSettings {
@@ -61,15 +75,40 @@ export async function listModels(settings: AiSettings): Promise<string[]> {
   const ids: string[] = Array.isArray(data.data) ? data.data.map((model: { id?: unknown }) => typeof model?.id === 'string' ? model.id.replace(/^models\//, '') : '').filter(Boolean) : []
   return [...new Set(ids)].filter(id => !/embed|whisper|tts|image|audio|guard|moderation|rerank/i.test(id)).sort()
 }
-export async function complete(messages: ChatMessage[], settings = readAiSettings()): Promise<string> {
+/** Reads a streamed reply ("data: {...}" lines) and reports the text so far after each piece. */
+async function readStream(response: Response, onText: (text: string) => void): Promise<string> {
+  const reader = response.body!.getReader(); const decoder = new TextDecoder()
+  let pending = ''; let text = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    pending += decoder.decode(value ?? new Uint8Array(), { stream: !done })
+    const lines = pending.split('\n'); pending = done ? '' : lines.pop() ?? ''
+    for (const line of lines) {
+      const data = line.trim().replace(/^data:\s*/, '')
+      if (!line.trim().startsWith('data:') || data === '[DONE]') continue
+      try {
+        const piece = JSON.parse(data)?.choices?.[0]?.delta?.content
+        if (typeof piece === 'string' && piece) { text += piece; onText(text) }
+      } catch { /* A partial or keep-alive line. */ }
+    }
+    if (done) return text
+  }
+}
+/** `onText`, when given, receives the reply as it is written (provider keys only). */
+export async function complete(messages: ChatMessage[], settings = readAiSettings(), onText?: (text: string) => void): Promise<string> {
   if (keyReady(settings)) {
     let response: Response
     try {
       response = await fetch(`${endpoint(settings)}/chat/completions`, { method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(settings.key ? { Authorization: `Bearer ${settings.key.trim()}` } : {}) },
-        body: JSON.stringify({ model: settings.model.trim(), messages }), signal: AbortSignal.timeout(60000) })
+        body: JSON.stringify({ model: settings.model.trim(), messages, ...(onText ? { stream: true } : {}) }), signal: AbortSignal.timeout(60000) })
     } catch { throw new Error('Could not reach the AI provider. Check your connection.') }
     if (!response.ok) throw new Error(failure(response.status))
+    if (onText && response.body && /event-stream/i.test(response.headers.get('content-type') ?? '')) {
+      const streamed = (await readStream(response, onText).catch(() => '')).trim()
+      if (!streamed) throw new Error('The AI provider sent an empty reply. Try again.')
+      return streamed
+    }
     const data = await response.json().catch(() => ({}))
     const text = data?.choices?.[0]?.message?.content
     if (typeof text !== 'string' || !text.trim()) throw new Error('The AI provider sent an empty reply. Try again.')

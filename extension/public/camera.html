@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Allow camera for Recall</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0d0f11; color: #eef1f4; font: 16px/1.6 system-ui, sans-serif; }
+    main { max-width: 440px; padding: 32px; text-align: center; }
+    h1 { margin: 0 0 12px; font-size: 24px; }
+    p { margin: 0 0 12px; color: #98a2ad; }
+    button { min-height: 44px; padding: 10px 22px; border: 0; border-radius: 11px; background: #a4e072; color: #0f1f08; font: inherit; font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 id="title">Allow the camera for Recall</h1>
+    <p id="text">Chrome cannot show the camera question inside the side panel, so it is asked here once. Choose Allow when Chrome asks.</p>
+    <p>Video is analysed on this computer only. Nothing is recorded or uploaded.</p>
+    <button id="ask" type="button">Ask again</button>
+  </main>
+  <script src="camera.js"></script>
+</body>
+</html>

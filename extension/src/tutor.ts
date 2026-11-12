@@ -2,11 +2,12 @@
 // plain text matching - no model and no network - so replies can only quote what was imported.
 export type Resource = { label: string; url: string }
 export type TutorQuestion = { prompt: string; answer: string; kind?: string; source?: string; options?: string[] }
-export type TutorReply = { text: string; sources: string[]; resources: Resource[]; /** True for a notes lookup (as opposed to a quiz hint or answer). */ lookup?: boolean }
+export type TutorReply = { text: string; sources: string[]; resources: Resource[]; /** True for a notes lookup (as opposed to a quiz hint or answer). */ lookup?: boolean; /** True for a stepped quiz hint. */ hint?: boolean }
 
 const STOP = new Set(('a an and are as at be been but by can could did do does for from had has have how i if in into is it its me my of on or our '
   + 'should so some than that the their them then there these they this those to was we were what when where which who why will with would you your '
   + 'about explain describe define tell give mean means meaning definition please help understand know dont not no any more again').split(' '))
+const REVEAL = /\b(?:show|tell|give|reveal)\b.*\banswer\b|\bwhat(?:'s| is) the answer\b|\bgive up\b/i
 const HELP = /\b(?:hints?|stuck|answer|help|clue|idk|no idea|blank|missing|give up|don'?t (?:know|get|understand)|not sure|confused)\b/i
 
 function stem(word: string) {
@@ -67,15 +68,23 @@ function hintFor(question: TutorQuestion, passages: string[], level: number): Tu
       ? { text: `A strong answer covers these ideas from your notes: ${keywords.join(', ')}. Try writing one sentence for each.`, sources: [], resources: [] }
       : { text: 'Here is the passage this question is based on. Read it, close it, then write the answer in your own words.', sources: related, resources: [] }
   }
-  const wordCount = answer.split(/\s+/).length
-  const shape = `${wordCount === 1 ? 'one word' : `${wordCount} words`}, ${answer.replace(/\s/g, '').length} letters, starting with "${answer[0]?.toUpperCase() ?? ''}"`
-  const others = passages.filter(passage => passage !== question.source && new RegExp(`(?<![A-Za-z])${escapeRegex(answer)}(?![A-Za-z])`, 'i').test(passage)).slice(0, 1).map(passage => redact(passage, answer))
-  if (level === 0) return others.length
-    ? { text: `The missing term is ${shape}. Your notes use the same term here:`, sources: others, resources: [] }
-    : { text: `The missing term is ${shape}. Read the rest of the sentence: what thing does that description fit?`, sources: [], resources: [] }
+  // Hints are about meaning first: what the notes say about the answer, with the answer itself masked.
+  const mentions = new RegExp(`(?<![A-Za-z])${escapeRegex(answer)}(?![A-Za-z])`, 'i')
+  const about = passages.filter(passage => mentions.test(passage)).sort((a, b) => Number(a === question.source) - Number(b === question.source)).map(passage => redact(passage, answer))
   const wrong = question.options?.filter(option => option.toLowerCase() !== answer.toLowerCase()) ?? []
-  if (level === 1) return { text: `Letter pattern: ${pattern(answer, 1)}${wrong.length > 1 ? `\nYou can rule out "${wrong[0]}".` : ''}`, sources: [], resources: [] }
-  return { text: `More letters: ${pattern(answer, 2)}\nThat is the last hint. Turn Hints Mode off if you want to see the answer.`, sources: [], resources: [] }
+  // What the notes say about a wrong option shows why it does not fit.
+  const describe = (option: string) => passages.find(passage => new RegExp(`(?<![A-Za-z])${escapeRegex(option)}(?![A-Za-z])`, 'i').test(passage) && !mentions.test(passage))
+  if (level === 0) return about.length
+    ? { text: 'Think about what the question is describing. Your notes talk about the answer here, with the term hidden:', sources: about.slice(0, 1), resources: [] }
+    : { text: 'Break the question down: what kind of thing is being described, and what does it do? Match that against each option rather than the wording.', sources: [], resources: [] }
+  if (level === 1) {
+    const ruled = wrong.find(describe)
+    if (ruled) return { text: `You can rule out "${ruled}". Your notes describe it differently:`, sources: [describe(ruled)!], resources: [] }
+    if (about.length > 1) return { text: 'Here is another place your notes mention it:', sources: about.slice(1, 2), resources: [] }
+    return { text: wrong.length > 1 ? `It is not "${wrong[0]}". Compare what is left with the description in the question.` : 'Reread the description and say in your own words what it does. The term for that is the answer.', sources: [], resources: [] }
+  }
+  const remaining = wrong.slice(-1)
+  return { text: `${question.options?.length && remaining.length ? `It is not "${remaining[0]}" either. ` : ''}Last hint, the shape of the word: ${pattern(answer, 1)}\nAsk me to show the answer if you are still stuck.`, sources: [], resources: [] }
 }
 
 export function tutorReply(input: { passages: string[]; message: string; question?: TutorQuestion; hintsOn: boolean; level?: number }): TutorReply {
@@ -84,7 +93,8 @@ export function tutorReply(input: { passages: string[]; message: string; questio
   const wantsHelp = HELP.test(message) || !topic
   const hide = (text: string) => question && hintsOn && question.kind !== 'long' ? redact(text, question.answer) : text
   if (question && wantsHelp) {
-    if (hintsOn) return hintFor(question, passages, level)
+    // Hints first; after the last hint, asking for the answer shows it even with Hints Mode on.
+    if (hintsOn && !(REVEAL.test(message) && level >= 3)) return { ...hintFor(question, passages, Math.min(level, 2)), hint: true }
     return question.kind === 'long'
       ? { text: 'Reference from your notes:', sources: [question.source ?? question.answer], resources: [] }
       : { text: `The answer is "${question.answer}".${question.source ? ' It comes from this line in your notes:' : ''}`, sources: question.source ? [question.source] : [], resources: resourceLinks(question.answer) }
@@ -93,8 +103,8 @@ export function tutorReply(input: { passages: string[]; message: string; questio
   const hits = searchNotes(passages, message)
   if (hits.length) return { text: `Here is what your notes say about ${hide(topic)}:`, sources: hits.map(hide), resources: resourceLinks(topic), lookup: true }
   if (question && hintsOn) {
-    const hint = hintFor(question, passages, level)
-    return { ...hint, text: `I could not find "${topic}" in your notes, so here is a hint for the question instead. ${hint.text}` }
+    const hint = hintFor(question, passages, Math.min(level, 2))
+    return { ...hint, hint: true, text: `I could not find "${topic}" in your notes, so here is a hint for the question instead. ${hint.text}` }
   }
   return {
     text: passages.length

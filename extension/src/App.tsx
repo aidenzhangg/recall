@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { checkHealth, requestQuiz } from './api'
 import { readPdf } from './pdf'
-import { aiQuestions } from './aiStudy'
+import { aiQuestions, gradeAnswer } from './aiStudy'
 import HintCoach from './HintCoach'
 import FocusTimer from './FocusTimer'
 import Profile from './Profile'
@@ -37,7 +37,7 @@ function App() {
   const [importing, setImporting] = useState(false)
   const [importReport, setImportReport] = useState<{ name: string; pages: number; warnings: string[] } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [tab, setTab] = useState<Tab>('Dashboard')
+  const [tab, setTab] = useState<Tab>('Tutor')
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try { return localStorage.getItem('recall-theme') === 'light' ? 'light' : 'dark' }
     catch { return 'dark' }
@@ -60,11 +60,16 @@ function App() {
   const [adaptive, setAdaptive] = useState(local?.adaptive ?? true)
   const [format, setFormat] = useState<QuizFormat>(local?.format ?? 'choice')
   const [questions, setQuestions] = useState<Question[]>(local?.questions ?? [])
+  const sessionKey = useMemo(() => questions.map(q => q.prompt).join(), [questions])
   const [answers, setAnswers] = useState<string[]>(local?.answers ?? [])
   const [submitted, setSubmitted] = useState(local?.submitted ?? false)
   const [questionIndex, setQuestionIndex] = useState(local?.questionIndex ?? 0)
   // Sources whose first multiple-choice pick was wrong; they still count as missed for review.
   const [firstWrong, setFirstWrong] = useState<string[]>([])
+  // Typed and written questions that have been checked in this session, and AI feedback on written answers.
+  const [checked, setChecked] = useState<number[]>([])
+  const [feedback, setFeedback] = useState<Record<number, string>>({})
+  const resetSession = useCallback(() => { setSubmitted(false); setQuestionIndex(0); setFirstWrong([]); setChecked([]); setFeedback({}) }, [])
   useEffect(() => { checkHealth().then(setServerUp) }, [])
   const [savedToken] = useState(readToken)
   const [account, setAccount] = useState<Account | null>(null)
@@ -132,7 +137,7 @@ function App() {
   function editNotes(text: string) {
     generationId.current++; setGenerating(false)
     setNotes(text); setNoteName('Pasted notes'); setImportReport(null)
-    setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0); setQuizOrigin('')
+    setQuestions([]); setAnswers([]); resetSession(); setQuizOrigin('')
   }
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -148,7 +153,7 @@ function App() {
       if (text.length > 200000) { setError('Use material under 200,000 characters.'); return }
       if (!text.trim()) { setError('No readable text found in this file.'); return }
       generationId.current++; setGenerating(false)
-      setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0); setReview([]); setQuizOrigin(''); setFocusTopic('')
+      setQuestions([]); setAnswers([]); resetSession(); setReview([]); setQuizOrigin(''); setFocusTopic('')
       setNotes(text); setNoteName(file.name)
       setImportReport(pdf ? { name: file.name, pages: pdf.pageCount, warnings: pdf.warnings } : null)
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not import the file.') }
@@ -170,15 +175,15 @@ function App() {
       catch { next = useHistory ? adaptiveQuestions(notes, count, format, review, Date.now(), focusTopic) : makeQuestions(notes, count, format, focusTopic); setQuizOrigin('Practice from your notes') }
       if (id !== generationId.current) return
       if (!next.length) { setError('No clear definitions or explanations matched. Try another focus topic or select the relevant lecture text in Notes.'); return }
-      setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false); setFirstWrong([])
-      setQuestionIndex(0); setTab('Practice')
+      setQuestions(next); setAnswers(next.map(() => '')); resetSession()
+      setTab('Practice')
     } finally { if (id === generationId.current) setGenerating(false) }
   }
   const paper = useMemo(() => examQuestions(notes), [notes])
   function startPaper() {
     const next = paper.slice(0, count).map((prompt): Question => ({ kind: 'long', prompt, answer: 'Past papers do not include an answer key. Check your answer against your course notes or the mark scheme.' }))
     generationId.current++; setGenerating(false); setError('')
-    setQuestions(next); setAnswers(next.map(() => '')); setSubmitted(false); setQuestionIndex(0); setFirstWrong([]); setQuizOrigin('Past-paper practice - self-review')
+    setQuestions(next); setAnswers(next.map(() => '')); resetSession(); setQuizOrigin('Past-paper practice - self-review')
   }
   function openWorkspace() {
     if (typeof chrome !== 'undefined' && chrome.tabs) void chrome.tabs.create({ url: chrome.runtime.getURL('index.html') })
@@ -188,17 +193,46 @@ function App() {
   const words = notes.trim() ? notes.trim().split(/\s+/).length : 0
   const answered = answers.filter(a => a.trim()).length
   const graded = questions.filter(q => q.kind !== 'long').length
-  const score = questions.filter((q, i) => isCorrect(q, answers[i])).length
+  // A question only scores when it was right on the first try.
+  const firstTry = (q: Question, i: number) => isCorrect(q, answers[i]) && !firstWrong.includes(q.source ?? `#${i}`)
+  const score = questions.filter(firstTry).length
   const question = questions[questionIndex]
   const picked = question?.kind === 'choice' ? answers[questionIndex] ?? '' : ''
   const pickedRight = !!picked && isCorrect(question, picked)
   // With Hints Mode on a wrong pick can be retried; with it off the answer is shown and the question locks.
   const choiceLocked = submitted || pickedRight || (!!picked && !hintsOn)
+  const missKey = question ? question.source ?? `#${questionIndex}` : ''
+  const noteMiss = () => setFirstWrong(previous => previous.includes(missKey) ? previous : [...previous, missKey])
   function choose(option: string) {
     setAnswers(previous => previous.map((a, i) => i === questionIndex ? option : a))
-    const source = question.source
-    if (source && !isCorrect(question, option)) setFirstWrong(previous => previous.includes(source) ? previous : [...previous, source])
+    if (!isCorrect(question, option)) noteMiss()
   }
+  const typed = answers[questionIndex] ?? ''
+  const isChecked = checked.includes(questionIndex)
+  const typedRight = question?.kind !== 'choice' && isCorrect(question ?? { prompt: '', answer: '' }, typed)
+  // A checked answer locks once it is right, or straight away when Hints Mode is off and the answer is shown.
+  const typedLocked = submitted || (isChecked && (question?.kind === 'long' || typedRight || !hintsOn))
+  function type(value: string) {
+    setAnswers(previous => previous.map((a, i) => i === questionIndex ? value : a))
+    setChecked(previous => previous.filter(i => i !== questionIndex))
+  }
+  function check() {
+    if (!typed.trim()) return
+    const index = questionIndex
+    setChecked(previous => [...previous, index])
+    if (question.kind === 'long') {
+      // A model, when one is connected, comments on the written answer; otherwise it is self-review.
+      setFeedback(previous => ({ ...previous, [index]: '...' }))
+      gradeAnswer({ notes, prompt: question.prompt, answer: typed, reference: question.answer }).catch(() => '').then(text => setFeedback(previous => ({ ...previous, [index]: text })))
+    } else if (!isCorrect(question, typed)) noteMiss()
+  }
+  const needsCheck = !!question && question.kind !== 'choice' && !isChecked && !submitted
+  const last = questionIndex === questions.length - 1
+  function finish() {
+    setSubmitted(true); recordStudyDay()
+    setReview(previous => recordAttempt(previous, questions, answers.map((answer, i) => firstWrong.includes(questions[i].source ?? `#${i}`) ? '' : answer)))
+  }
+  function retry() { setAnswers(questions.map(() => '')); resetSession() }
   const weak = useMemo(() => review.filter(item => item.misses > item.successes).sort((a, b) => (b.misses - b.successes) - (a.misses - a.successes)).slice(0, 4), [review])
   const topics = useMemo(() => [...new Set(makeQuestions(notes, 4, 'long').map(q => q.topic ?? ''))].filter(Boolean), [notes])
   const tools: { tab: Tab; title: string; text: string; planned?: boolean }[] = [
@@ -214,7 +248,7 @@ function App() {
   return <main className="panel">
     <header className="masthead"><div className="brand"><span className="brand-mark" aria-hidden="true">r</span><div><h1>Recall</h1></div></div><div className="header-controls"><button className="save-status" onClick={() => navigate('Profile')}>{account ? syncStatus : 'Saved on this device'}</button><button className="expand-button" onClick={openWorkspace} aria-label="Open Recall in a new tab" title="Open in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></button></div></header>
 
-    <nav className="tabs" aria-label="Study workspace">{(['Dashboard', 'Notes', 'Practice', 'Tutor', 'Cards', 'Focus', 'Block', 'Connect'] as Tab[]).map(name => <button key={name} title={name === 'Tutor' ? 'Recall AI' : name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name} className={`tab${tab === name ? ' active' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon name={name} /><span className="tab-label">{name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name === 'Tutor' ? 'Recall AI' : name}</span></button>)}<section className="agent-bar" aria-label="Study assistance controls"><div><strong>Hints Mode</strong></div><div className={`mode-toggle${hintsOn ? ' mode-toggle--on' : ''}`} role="group" aria-label="Hints Mode"><span className="mode-indicator" aria-hidden="true" /><button aria-pressed={hintsOn} onClick={() => setHintsOn(true)}>On</button><button aria-pressed={!hintsOn} onClick={() => setHintsOn(false)}>Off</button></div></section><div className="theme-switch" role="group" aria-label="Appearance"><button type="button" aria-label="Light mode" title="Light mode" aria-pressed={theme === 'light'} onClick={() => setTheme('light')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg></button><button type="button" aria-label="Dark mode" title="Dark mode" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" /></svg></button></div></nav>
+    <nav className="tabs" aria-label="Study workspace">{(['Tutor', 'Dashboard', 'Notes', 'Practice', 'Cards', 'Focus', 'Block', 'Connect'] as Tab[]).map(name => <button key={name} title={name === 'Tutor' ? 'Recall AI' : name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name} className={`tab${tab === name ? ' active' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon name={name} /><span className="tab-label">{name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name === 'Tutor' ? 'Recall AI' : name}</span></button>)}<section className="agent-bar" aria-label="Study assistance controls"><div><strong>Hints Mode</strong></div><div className={`mode-toggle${hintsOn ? ' mode-toggle--on' : ''}`} role="group" aria-label="Hints Mode"><span className="mode-indicator" aria-hidden="true" /><button aria-pressed={hintsOn} onClick={() => setHintsOn(true)}>On</button><button aria-pressed={!hintsOn} onClick={() => setHintsOn(false)}>Off</button></div></section><div className="theme-switch" role="group" aria-label="Appearance"><button type="button" aria-label="Light mode" title="Light mode" aria-pressed={theme === 'light'} onClick={() => setTheme('light')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg></button><button type="button" aria-label="Dark mode" title="Dark mode" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" /></svg></button></div></nav>
     {restoring && <p className="restore-status" role="status">Restoring your account</p>}
     {error && <p className="error" role="alert">{error}</p>}
     <div inert={restoring} className={tab === 'Tutor' ? 'workspace workspace--tutor' : tab === 'Dashboard' ? 'workspace workspace--dashboard' : 'workspace'}>
@@ -244,23 +278,29 @@ function App() {
       <button className="primary" disabled={!notes.trim() || importing} onClick={() => navigate('Practice')}>Set up practice </button>
     </section>}
     {tab === 'Practice' && <section className="content" aria-labelledby="practice-title">
-      <div className="page-heading"><h2 id="practice-title">{questions.length ? 'Practice session' : 'New quiz'}</h2></div>
+      <div className="page-heading"><h2 id="practice-title">{!questions.length ? 'New quiz' : submitted ? 'Results' : 'Practice session'}</h2></div>
       {!questions.length ? <>{paper.length > 0 && <div className="card paper-card"><div><strong>Past paper detected</strong><p>{paper.length} exam question{paper.length === 1 ? '' : 's'} found in this material. Answer them one at a time and review each yourself.</p></div><button className="secondary" onClick={startPaper}>Practise {Math.min(count, paper.length)} past-paper questions</button></div>}<div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><label className="focus-topic">Focus topic (optional)<input type="text" maxLength={200} value={focusTopic} onChange={e => setFocusTopic(e.target.value)} placeholder="e.g. cellular respiration" /></label><p className="muted">With AI on (see Recall AI settings) questions are written fresh from your notes. Otherwise they are built from the definitions in them.</p><label className="adaptive-control"><input type="checkbox" checked={adaptive} onChange={e => setAdaptive(e.target.checked)} /><span>Prioritize topics I missed</span></label><p className="muted">{review.filter(item => item.misses > item.successes).length} topics need practice. Written answers use self-review.</p><button className="primary" disabled={!notes.trim() || generating} onClick={() => void generate()}>{generating ? 'Preparing...' : 'Start practice'} </button></> : <>
+        {submitted ? <>
+          <div className="card results" role="status"><span className="results-score">{graded ? `${score}/${graded}` : 'Done'}</span><div><strong>{graded ? score === graded ? 'Every answer right first time' : `${score} of ${graded} right first time` : 'Ready for self-review'}</strong><p>{questions.length > graded ? `${questions.length - graded} written answer${questions.length - graded === 1 ? '' : 's'} for self-review. ` : ''}{graded > score ? 'Missed questions come back first in your next quiz.' : ''}</p></div></div>
+          <ol className="review-list">{questions.map((q, i) => <li key={i} className={q.kind === 'long' ? 'review-item' : firstTry(q, i) ? 'review-item review-item--right' : 'review-item review-item--wrong'}><p className="review-prompt">{q.prompt}</p><p><span>Your answer</span>{answers[i]?.trim() || 'No answer'}</p>{q.kind === 'long' ? <>{feedback[i] && feedback[i] !== '...' && <p><span>Feedback</span>{feedback[i]}</p>}<p><span>Reference</span>{q.answer}</p></> : <>{!firstTry(q, i) && <p><span>Correct answer</span>{q.answer}</p>}{q.explanation && <p><span>Why</span>{q.explanation}</p>}</>}</li>)}</ol>
+          <div className="button-row"><button className="primary" onClick={retry}>Try again</button><button className="secondary" onClick={() => { setQuestions([]); setAnswers([]); resetSession() }}>New quiz</button></div>
+        </> : <>
         <p className="muted" role="status">{quizOrigin}</p><div className="quiz-progress"><div><span>Question {questionIndex + 1} of {questions.length}</span><span>{answered} answered</span></div><progress value={answered} max={questions.length} aria-label="Questions answered" /></div>
         <div className="question"><label id="question-prompt" htmlFor={`answer-${questionIndex}`}>{question.prompt}</label>
           {question.kind === 'choice' ? <fieldset className="choice-options" aria-labelledby="question-prompt"><legend className="visually-hidden">Choose an answer</legend>{question.options?.map(option => <label key={option} className={option === picked ? (pickedRight ? 'choice-right' : 'choice-wrong') : picked && !pickedRight && !hintsOn && isCorrect(question, option) ? 'choice-right' : undefined}><input type="radio" name={`answer-${questionIndex}`} value={option} checked={picked === option} disabled={choiceLocked} onChange={() => choose(option)} /><span>{option}</span></label>)}</fieldset>
-          : question.kind === 'long' ? <textarea id={`answer-${questionIndex}`} value={answers[questionIndex]} disabled={submitted} placeholder="Write your explanation" onChange={e => setAnswers(previous => previous.map((a, i) => i === questionIndex ? e.target.value : a))} />
-          : <input id={`answer-${questionIndex}`} autoComplete="off" value={answers[questionIndex]} disabled={submitted} placeholder="Your answer" onChange={e => setAnswers(previous => previous.map((a, i) => i === questionIndex ? e.target.value : a))} />}
+          : question.kind === 'long' ? <textarea id={`answer-${questionIndex}`} value={typed} disabled={typedLocked} placeholder="Write your explanation" onChange={e => type(e.target.value)} />
+          : <input id={`answer-${questionIndex}`} autoComplete="off" value={typed} disabled={typedLocked} placeholder="Type your answer, then press Enter" onChange={e => type(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && needsCheck) check() }} />}
           {question.kind === 'choice' && picked && <p className={pickedRight ? 'correct choice-feedback' : 'feedback choice-feedback choice-feedback--wrong'} role="status">{pickedRight ? 'Correct!' : hintsOn ? 'Not quite. Pick another option or ask for a hint.' : `Not quite. The answer is ${question.answer}.`}</p>}
           {question.kind === 'choice' && picked && question.explanation && (pickedRight || !hintsOn) && <p className="explanation">{question.explanation}</p>}
-          {submitted && question.kind !== 'choice' && (question.kind === 'long' ? <div className="feedback"><p>Self-review: this response is not automatically scored.</p>{hintsOn ? <p>Compare your explanation with your notes or ask for a hint.</p> : <><strong>Reference answer</strong><p>{question.answer}</p></>}</div> : <p className={isCorrect(question, answers[questionIndex]) ? 'correct' : 'feedback'}>{isCorrect(question, answers[questionIndex]) ? 'Correct.' : hintsOn ? 'Incorrect. Ask for a hint or retry.' : `Answer: ${question.answer}`}</p>)}
+          {question.kind === 'blank' && isChecked && <p className={typedRight ? 'correct choice-feedback' : 'feedback choice-feedback choice-feedback--wrong'} role="status">{typedRight ? 'Correct!' : hintsOn ? 'Not quite. Change your answer and check again, or ask for a hint.' : `Not quite. The answer is ${question.answer}.`}</p>}
+          {question.kind === 'long' && isChecked && <div className="feedback" role="status">{feedback[questionIndex] === '...' ? <p>Reading your answer...</p> : feedback[questionIndex] ? <p className="explanation">{feedback[questionIndex]}</p> : <p>Compare your answer with the reference below and decide how close you were.</p>}<strong>Reference</strong><p>{question.answer}</p></div>}
         </div>
-        <div className="question-navigation"><button className="text-button" disabled={questionIndex === 0} onClick={() => setQuestionIndex(i => i - 1)}> Previous</button><button className="text-button" disabled={questionIndex === questions.length - 1} onClick={() => setQuestionIndex(i => i + 1)}>Next </button></div>
-        {submitted ? <><p className="result" role="status">{graded ? `${score} of ${graded} auto-scored answers correct` : 'Responses ready for self-review'}{questions.length > graded && graded > 0 ? `; ${questions.length - graded} for self-review` : ''}</p><button className="primary" onClick={() => setSubmitted(false)}>Retry answers </button></> : <button className="primary" disabled={answered !== questions.length} onClick={() => { setSubmitted(true); setReview(previous => recordAttempt(previous, questions, answers.map((answer, i) => firstWrong.includes(questions[i].source ?? '') ? '' : answer))); recordStudyDay() }}>Check all answers </button>}
-        <div className="quiz-tools"><button className="text-button" onClick={() => navigate('Tutor')}>{hintsOn ? 'Ask for a hint' : 'Ask Recall AI'}</button><button className="text-button" onClick={() => { setQuestions([]); setAnswers([]); setSubmitted(false); setQuestionIndex(0) }}>New session</button></div>
+        <div className="button-row">{questionIndex > 0 && <button className="secondary" onClick={() => setQuestionIndex(i => i - 1)}>Back</button>}{needsCheck ? <button className="primary" disabled={!typed.trim()} onClick={check}>Check answer</button> : last ? <button className="primary" disabled={answered !== questions.length} onClick={finish}>{answered === questions.length ? 'See results' : 'Answer every question to finish'}</button> : <button className="primary" onClick={() => setQuestionIndex(i => i + 1)}>{(question.kind === 'choice' ? picked : typed.trim()) ? 'Next question' : 'Skip for now'}</button>}</div>
+        <div className="quiz-tools"><button className="text-button" onClick={() => navigate('Tutor')}>{hintsOn ? 'Ask for a hint' : 'Ask Recall AI'}</button><button className="text-button" onClick={() => { setQuestions([]); setAnswers([]); resetSession() }}>New quiz</button></div>
+        </>}
       </>}
     </section>}
-    {tab === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={questions.map(q => q.prompt).join()} questions={questions} current={questionIndex} notes={notes} hintsOn={hintsOn} topics={topics} token={account?.token} />{questions.length > 0 && <button className="text-button return-link" onClick={() => navigate('Practice')}>Back to your quiz</button>}</section>}
+    {tab === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={sessionKey} questions={questions} current={questionIndex} notes={notes} hintsOn={hintsOn} topics={topics} token={account?.token} />{questions.length > 0 && <button className="text-button return-link" onClick={() => navigate('Practice')}>Back to your quiz</button>}</section>}
     </div>
     <footer className="app-footer">
       <span role="status">{serverUp === null ? 'Checking sync server' : serverUp ? 'Sync server connected' : 'Running on this device'}</span>
