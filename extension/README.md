@@ -16,4 +16,4 @@ Load `dist` as an unpacked extension at chrome://extensions. Rebuild, reload Rec
 
 The API defaults to localhost:8080/api. A hosted backend needs a build-time VITE_API_BASE value and its exact origin in the manifest host permissions. Never include private server keys in frontend environment variables: Vite embeds them in browser assets.
 
-The visual system uses Space Grotesk, IBM Plex Sans and IBM Plex Mono with charcoal/signal-green tokens. Layouts use a narrow icon rail below 700px and labelled navigation above it. Camera tools remain collapsed and explicitly planned. Connect requires an account; images are reviewed and transcribed manually before their text is added to Notes.
+The visual system uses Outfit, IBM Plex Sans and IBM Plex Mono with near-black/lime tokens (and a light theme) defined in `src/index.css`. Below 720px, navigation is a floating dock at the bottom of the panel; above it, a labelled sidebar. Camera focus lives on the Focus tab: `src/gaze.ts` holds the pure tracking logic and `src/FocusGuard.tsx` the camera, face model and UI. Connect requires an account; images are reviewed and transcribed manually before their text is added to Notes.

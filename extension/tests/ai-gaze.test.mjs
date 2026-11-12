@@ -48,13 +48,32 @@ test('focus score counts time on screen, ignores blinks, and checks in once afte
   let now = 1000, snapshot
   const run = (state, seconds) => { for (let i = 0; i < seconds * 5; i++) { now += 200; snapshot = tracker.update(state, now) } }
   tracker.update('screen', now)
-  run('screen', 10); assert.equal(snapshot.score, 100)
+  run('screen', 10); assert.equal(snapshot.score, 100); assert.equal(snapshot.bestStreakSeconds, 10)
   now += 200; snapshot = tracker.update('closed', now); assert.equal(snapshot.awaySeconds, 0)
   let alerts = 0
   for (let i = 0; i < 50; i++) { now += 200; snapshot = tracker.update('away', now); if (snapshot.checkIn) alerts++ }
-  assert.equal(alerts, 1); assert.equal(snapshot.awaySeconds, 10); assert.equal(snapshot.score, 50)
+  // Only the five seconds before the check-in are scored; the paused wait afterwards is not.
+  assert.equal(alerts, 1); assert.equal(snapshot.awaySeconds, 10); assert.equal(snapshot.score, 67); assert.equal(snapshot.lapses, 1)
   run('screen', 1); assert.equal(snapshot.awaySeconds, 0)
   now += 60000; snapshot = tracker.update('none', now); assert.equal(snapshot.awaySeconds, 0)
+})
+test('looking back for two seconds ends a check-in, and short glances are not lapses', () => {
+  const tracker = new FocusTracker(5)
+  let now = 1000, snapshot, returns = 0, alerts = 0
+  const run = (state, seconds) => { for (let i = 0; i < seconds * 5; i++) { now += 200; snapshot = tracker.update(state, now); if (snapshot.returned) returns++; if (snapshot.checkIn) alerts++ } }
+  tracker.update('screen', now)
+  run('screen', 3); run('away', 1); run('screen', 3)
+  assert.equal(snapshot.lapses, 0); assert.equal(snapshot.bestStreakSeconds, 6)
+  run('away', 6); assert.equal(alerts, 1)
+  run('screen', 1); assert.equal(returns, 0)
+  run('away', 1); run('screen', 3); assert.equal(returns, 1)
+  const scored = snapshot.observedSeconds
+  run('away', 6); assert.equal(alerts, 2); assert.equal(snapshot.lapses, 2)
+  tracker.acknowledge(); run('screen', 2)
+  assert.ok(snapshot.observedSeconds > scored); assert.equal(snapshot.awaySeconds, 0)
+  assert.ok(snapshot.timeline.length > 0 && snapshot.timeline.length <= 60)
+  assert.ok(snapshot.timeline.includes('away') && snapshot.timeline.includes('screen'))
+  tracker.reset(); assert.equal(tracker.update('screen', now + 200).timeline.length, 0)
 })
 
 test('a chat model is chosen from what the key can use, and replies can be streamed', async () => {
