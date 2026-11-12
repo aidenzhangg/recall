@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
   // Building against a hosted backend (VITE_API_BASE=https://host/api) also needs permission to call that host.
   const env = loadEnv(mode, process.cwd())
   const base = env.VITE_API_BASE
+  if (/service_role|^sb_secret_/.test(env.VITE_SUPABASE_ANON_KEY ?? '') ) throw new Error('VITE_SUPABASE_ANON_KEY looks like a secret key. Use the anon / publishable key instead.')
   if (env.VITE_AI_KEY) console.warn('\nRecall: this build contains a shared AI key from .env.local. Anyone who installs it can read that key.\n')
   return {
     plugins: [react(), {

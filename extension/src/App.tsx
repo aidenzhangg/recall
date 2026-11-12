@@ -10,7 +10,8 @@ import Connect from './Connect'
 import WebsiteBlocker from './WebsiteBlocker'
 import { appendMaterial } from './material'
 import Flashcards from './Flashcards'
-import { accountRequest, parseProgress, readLocalWorkspace, readToken, rememberToken, saveLocalWorkspace, saveProgress } from './account'
+import PredictionPaper from './PredictionPaper'
+import { accountRequest, clearLocalWorkspace, CLOUD_ACCOUNTS, parseProgress, readLocalWorkspace, readToken, rememberToken, saveLocalWorkspace, saveProgress } from './account'
 import type { Account, SavedProgress } from './account'
 import { dateKey, recentDays, streakLength, readStudyDays } from './activity'
 import './App.css'
@@ -35,6 +36,7 @@ function App() {
     setStudyDays(previous => previous.includes(today) ? previous : [...previous, today].sort().slice(-366))
   }, [])
   const [importing, setImporting] = useState(false)
+  const [focusLocked, setFocusLocked] = useState(false)
   const [importReport, setImportReport] = useState<{ name: string; pages: number; warnings: string[] } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [tab, setTab] = useState<Tab>('Tutor')
@@ -82,6 +84,8 @@ function App() {
   function authenticate(next: Account, saved: SavedProgress | null) {
     if (saved) applyProgress(saved)
     rememberToken(next.token); setAccount(next); setSyncStatus('Saving progress')
+    // Anything studied before signing in now belongs to the account, not this device.
+    if (CLOUD_ACCOUNTS) clearLocalWorkspace()
   }
   useEffect(() => {
     const token = savedToken
@@ -109,7 +113,7 @@ function App() {
     return () => { window.clearTimeout(timer); abort.abort() }
   }, [account, progress])
   useEffect(() => {
-    if (account || restoring) return
+    if (account || restoring || CLOUD_ACCOUNTS) return
     const timer = window.setTimeout(() => saveLocalWorkspace(progress), 600)
     return () => window.clearTimeout(timer)
   }, [account, restoring, progress])
@@ -178,15 +182,18 @@ function App() {
     } finally { if (id === generationId.current) setGenerating(false) }
   }
   const paper = useMemo(() => examQuestions(notes), [notes])
-  function startPaper() {
-    const next = paper.slice(0, count).map((prompt): Question => ({ kind: 'long', prompt, answer: 'Past papers do not include an answer key. Check your answer against your course notes or the mark scheme.' }))
+  function startPaper(prompts = paper.slice(0, count), origin = 'Past-paper practice - self-review') {
+    const next = prompts.map((prompt): Question => ({ kind: 'long', prompt, answer: 'Past papers do not include an answer key. Check your answer against your course notes or the mark scheme.' }))
     generationId.current++; setGenerating(false); setError('')
-    setQuestions(next); setAnswers(next.map(() => '')); resetSession(); setQuizOrigin('Past-paper practice - self-review')
+    setQuestions(next); setAnswers(next.map(() => '')); resetSession(); setQuizOrigin(origin)
   }
   function openWorkspace() {
     if (typeof chrome !== 'undefined' && chrome.tabs) void chrome.tabs.create({ url: chrome.runtime.getURL('index.html') })
     else window.open(window.location.href, '_blank', 'noopener,noreferrer')
   }
+  // With accounts on, nothing is usable until you are signed in, so nothing is kept on the device.
+  const gated = CLOUD_ACCOUNTS && !account
+  const shown: Tab = gated ? 'Profile' : tab
   function navigate(next: Tab) { generationId.current++; setGenerating(false); setTab(next); setError('') }
   const words = notes.trim() ? notes.trim().split(/\s+/).length : 0
   const answered = answers.filter(a => a.trim()).length
@@ -234,14 +241,15 @@ function App() {
   const weak = useMemo(() => review.filter(item => item.misses > item.successes).sort((a, b) => (b.misses - b.successes) - (a.misses - a.successes)).slice(0, 4), [review])
   const topics = useMemo(() => [...new Set(makeQuestions(notes, 4, 'long').map(q => q.topic ?? ''))].filter(Boolean), [notes])
   const hintSwitch = <label className="hint-switch switch" title="With hints on, Recall guides you to answers instead of showing them"><span>Hints</span><input type="checkbox" role="switch" checked={hintsOn} onChange={e => setHintsOn(e.target.checked)} /></label>
-  return <main className="panel">
-    <header className="masthead"><div className="brand"><span className="brand-mark" aria-hidden="true">r</span><div><h1>Recall</h1></div></div><div className="header-controls"><button className="save-status" onClick={() => navigate('Profile')}>{account ? account.user.name.split(' ')[0] : 'Sign in'}</button><button className="expand-button" onClick={openWorkspace} aria-label="Open Recall in a new tab" title="Open in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></button></div></header>
+  return <main className={gated ? 'panel panel--gated' : 'panel'}>
+    <header className="masthead"><div className="brand"><span className="brand-mark" aria-hidden="true">r</span><div><h1>Recall</h1></div></div><div className="header-controls">{!gated && <button className="save-status" onClick={() => navigate('Profile')}>{account ? account.user.name.split(' ')[0] : 'Sign in'}</button>}<button className="expand-button" onClick={openWorkspace} aria-label="Open Recall in a new tab" title="Open in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></button></div></header>
 
-    <nav className="tabs" aria-label="Study workspace">{(['Tutor', 'Dashboard', 'Notes', 'Practice', 'Cards', 'Focus', 'Block'] as Tab[]).map(name => <button key={name} title={name === 'Tutor' ? 'Recall AI' : name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name} className={`tab${tab === name ? ' active' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon name={name} /><span className="tab-label">{name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name === 'Tutor' ? 'Recall AI' : name}</span></button>)}<button type="button" className="tab theme-button" title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{theme === 'dark' ? <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></> : <path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" />}</svg><span className="tab-label">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span></button></nav>
+    {!gated && <nav className="tabs" aria-label="Study workspace">{(['Tutor', 'Dashboard', 'Notes', 'Practice', 'Cards', 'Focus', 'Block'] as Tab[]).map(name => <button key={name} title={name === 'Tutor' ? 'Recall AI' : name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name} className={`tab${shown === name ? ' active' : ''}`} aria-current={shown === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon name={name} /><span className="tab-label">{name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name === 'Tutor' ? 'Recall AI' : name}</span></button>)}<button type="button" className="tab theme-button" title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{theme === 'dark' ? <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></> : <path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" />}</svg><span className="tab-label">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span></button></nav>}
+    <input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} />
     {restoring && <p className="restore-status" role="status">Restoring your account</p>}
     {error && <p className="error" role="alert">{error}</p>}
-    <div inert={restoring} className={tab === 'Tutor' ? 'workspace workspace--tutor' : tab === 'Dashboard' ? 'workspace workspace--dashboard' : 'workspace'}>
-    {tab === 'Dashboard' && <section className="dashboard" aria-labelledby="dashboard-title">
+    <div inert={restoring} className={shown === 'Tutor' ? 'workspace workspace--tutor' : shown === 'Dashboard' ? 'workspace workspace--dashboard' : 'workspace'}>
+    {shown === 'Dashboard' && <section className="dashboard" aria-labelledby="dashboard-title">
       <div className="page-heading"><h2 id="dashboard-title">{account ? `Welcome back, ${account.user.name.split(' ')[0]}` : 'Home'}</h2></div>
       <section className="session-overview" aria-label="Current material">
                 <h3>{words ? noteName : 'Add your notes to get started'}</h3>
@@ -253,22 +261,22 @@ function App() {
       {weak.length > 0 && <section className="card weak-topics" aria-labelledby="weak-title"><div className="card-heading"><h3 id="weak-title">Needs practice</h3><span>from your missed answers</span></div><ul>{weak.map(item => <li key={item.source}><div><strong>{item.topic}</strong><span>Missed {item.misses}x{item.successes ? `, correct ${item.successes}x` : ''}</span></div><div className="chips" aria-label={`Look up ${item.topic}`}>{resourceLinks(item.topic).slice(0, 3).map(link => <a key={link.label} className="chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>)}</div></li>)}</ul><button className="primary" disabled={generating || !notes.trim()} onClick={() => void generate(true)}>{generating ? 'Preparing...' : 'Practice weak topics'}</button></section>}
       <section className="card activity-summary" aria-label="Study activity"><div><h3>Activity</h3><span>{streakLength(studyDays)}-day streak</span></div><div className="streak-days" aria-label="Study activity over the last seven days">{recentDays().map(day => <span key={day} className={studyDays.includes(day) ? 'streak-day active' : 'streak-day'} title={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`} aria-label={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`}>{Number(day.slice(-2))}</span>)}</div></section>
     </section>}
-    {tab === 'Block' && <WebsiteBlocker />}
-    {tab === 'Connect' && <Connect key={account?.user.id ?? 'guest'} account={account} onSignIn={() => navigate('Profile')} onImport={text => { setNotes(appendMaterial(notes, text)); setNoteName('Imported material'); navigate('Notes') }} />}
-    {tab === 'Cards' && <Flashcards key={notes} notes={notes} onNotes={() => navigate('Notes')} />}
-    {tab === 'Profile' && <Profile account={account} syncStatus={syncStatus} onAuthenticated={authenticate} onSave={saveNow} onSignOut={signOut} />}
-    <div hidden={tab !== 'Focus'}><FocusTimer key={account?.user.id ?? 'guest'} onComplete={recordStudyDay} /></div>
-    {tab === 'Notes' && <section className="content" aria-labelledby="notes-title">
+    {shown === 'Block' && <WebsiteBlocker locked={focusLocked} />}
+    {shown === 'Connect' && <Connect key={account?.user.id ?? 'guest'} account={account} onSignIn={() => navigate('Profile')} onImport={text => { setNotes(appendMaterial(notes, text)); setNoteName('Imported material'); navigate('Notes') }} />}
+    {shown === 'Cards' && <Flashcards key={notes} notes={notes} onNotes={() => navigate('Notes')} />}
+    {shown === 'Profile' && <Profile required={CLOUD_ACCOUNTS} account={account} syncStatus={syncStatus} onAuthenticated={authenticate} onSave={saveNow} onSignOut={signOut} />}
+    <div hidden={shown !== 'Focus'}><FocusTimer key={account?.user.id ?? 'guest'} onComplete={recordStudyDay} onSession={setFocusLocked} /></div>
+    {shown === 'Notes' && <section className="content" aria-labelledby="notes-title">
       <div className="page-heading"><h2 id="notes-title">Notes</h2></div>
-      <div className="material-panel"><div className="material-heading"><NavIcon name="Notes" /><div><strong>{words ? noteName : 'Add course notes'}</strong><p>PDF, TXT or Markdown, up to 20 MB</p></div></div><input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} /><button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Importing...' : words ? 'Replace material' : 'Import material'}</button></div>
+      <div className="material-panel"><div className="material-heading"><NavIcon name="Notes" /><div><strong>{words ? noteName : 'Add course notes'}</strong><p>PDF, TXT or Markdown, up to 20 MB</p></div></div><button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Importing...' : words ? 'Replace material' : 'Import material'}</button></div>
       {importReport && importReport.name === noteName && <div className="import-report" role="status"><p>{importReport.pages ? `${importReport.pages} pages processed / ` : ''}{words.toLocaleString()} words extracted. Review the text below.</p>{importReport.warnings.length > 0 && <details open><summary>Some PDF content may be missing</summary><ul>{importReport.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details>}</div>}
       <div className="editor"><div className="field-heading"><label htmlFor="notes">Paste or edit notes</label><span>{words} words</span></div><textarea id="notes" maxLength={200000} value={notes} onChange={e => editNotes(e.target.value)} placeholder="Paste definitions, notes, or a topic you want to review" /></div>
       <button className="primary" disabled={!notes.trim() || importing} onClick={() => navigate('Practice')}>Make a quiz</button>
       <button className="text-button phone-link" onClick={() => navigate('Connect')}>Send photos from your phone</button>
     </section>}
-    {tab === 'Practice' && <section className="content" aria-labelledby="practice-title">
+    {shown === 'Practice' && <section className="content" aria-labelledby="practice-title">
       <div className="page-heading page-heading--row"><h2 id="practice-title">{!questions.length ? 'New quiz' : submitted ? 'Results' : 'Practice'}</h2>{questions.length > 0 && !submitted && hintSwitch}</div>
-      {!questions.length ? <>{paper.length > 0 && <div className="card paper-card"><div><strong>Past paper detected</strong><p>{paper.length} exam question{paper.length === 1 ? '' : 's'} found in this material. Answer them one at a time and review each yourself.</p></div><button className="secondary" onClick={startPaper}>Practise {Math.min(count, paper.length)} past-paper questions</button></div>}<div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><label className="focus-topic">Focus topic (optional)<input type="text" maxLength={200} value={focusTopic} onChange={e => setFocusTopic(e.target.value)} placeholder="e.g. cellular respiration" /></label><label className="adaptive-control"><input type="checkbox" checked={adaptive} onChange={e => setAdaptive(e.target.checked)} /><span>Bring back topics I missed</span></label><button className="primary" disabled={!notes.trim() || generating} onClick={() => void generate()}>{generating ? 'Preparing...' : 'Start practice'} </button></> : <>
+      {!questions.length ? <>{paper.length > 0 && <div className="card paper-card"><div><strong>Past paper detected</strong><p>{paper.length} exam question{paper.length === 1 ? '' : 's'} found in this material. Answer them one at a time and review each yourself.</p></div><button className="secondary" onClick={() => startPaper()}>Practise {Math.min(count, paper.length)} past-paper questions</button></div>}{paper.length > 0 ? <PredictionPaper key={notes} source={notes} name={noteName} onConnect={() => navigate('Tutor')} onPractise={prompts => startPaper(prompts, 'Prediction paper - self-review')} /> : <button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Reading the PDF...' : 'Upload a past paper for a prediction paper'}</button>}<div className="source"><span className="field-label">Study material</span><strong>{words ? noteName : 'No notes added'}</strong><button className="text-button" onClick={() => navigate('Notes')}>{words ? 'Edit notes' : 'Add notes'} </button></div><div className="settings"><label>Format<select value={format} onChange={e => setFormat(e.target.value as QuizFormat)}><option value="blank">Fill in the blank</option><option value="choice">Multiple choice</option><option value="long">Long answer</option><option value="mixed">Mixed</option></select></label><label>Length<select value={count} onChange={e => setCount(Number(e.target.value))}><option value={5}>5 questions</option><option value={10}>10 questions</option><option value={15}>15 questions</option></select></label></div><label className="focus-topic">Focus topic (optional)<input type="text" maxLength={200} value={focusTopic} onChange={e => setFocusTopic(e.target.value)} placeholder="e.g. cellular respiration" /></label><label className="adaptive-control"><input type="checkbox" checked={adaptive} onChange={e => setAdaptive(e.target.checked)} /><span>Bring back topics I missed</span></label><button className="primary" disabled={!notes.trim() || generating} onClick={() => void generate()}>{generating ? 'Preparing...' : 'Start practice'} </button></> : <>
         {submitted ? <>
           <div className="card results" role="status"><span className="results-score">{graded ? `${score}/${graded}` : 'Done'}</span><div><strong>{graded ? score === graded ? 'Every answer right first time' : `${score} of ${graded} right first time` : 'Ready for self-review'}</strong><p>{questions.length > graded ? `${questions.length - graded} written answer${questions.length - graded === 1 ? '' : 's'} for self-review. ` : ''}{graded > score ? 'Missed questions come back first in your next quiz.' : ''}</p></div></div>
           <ol className="review-list">{questions.map((q, i) => <li key={i} className={q.kind === 'long' ? 'review-item' : firstTry(q, i) ? 'review-item review-item--right' : 'review-item review-item--wrong'}><p className="review-prompt">{q.prompt}</p><p><span>Your answer</span>{answers[i]?.trim() || 'No answer'}</p>{q.kind === 'long' ? <>{feedback[i] && feedback[i] !== '...' && <p><span>Feedback</span>{feedback[i]}</p>}<p><span>Reference</span>{q.answer}</p></> : <>{!firstTry(q, i) && <p><span>Correct answer</span>{q.answer}</p>}{q.explanation && <p><span>Why</span>{q.explanation}</p>}</>}</li>)}</ol>
@@ -289,7 +297,7 @@ function App() {
         </>}
       </>}
     </section>}
-    {tab === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={sessionKey} questions={questions} current={questionIndex} notes={notes} hintsOn={hintsOn} topics={topics} token={account?.token} />{questions.length > 0 && <div className="quiz-tools"><button className="text-button" onClick={() => navigate('Practice')}>Back to your quiz</button>{hintSwitch}</div>}</section>}
+    {shown === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={sessionKey} questions={questions} current={questionIndex} notes={notes} hintsOn={hintsOn} topics={topics} token={account?.token} />{questions.length > 0 && <div className="quiz-tools"><button className="text-button" onClick={() => navigate('Practice')}>Back to your quiz</button>{hintSwitch}</div>}</section>}
     </div>
   </main>
 }

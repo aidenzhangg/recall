@@ -369,3 +369,20 @@ button.flashcard:hover { border-color: var(--accent); }
 .quiz-tools { border-top: 0; padding-top: 0; }
 .source { border: 0; padding: 0; background: none; }
 .material-panel { border-style: solid; }
+
+/* ---------- Prediction paper ---------- */
+.prediction { display: grid; gap: 14px; min-width: 0; }
+.paper { padding: 28px 24px; border-radius: 6px; background: #fff; color: #111; box-shadow: var(--shadow); font: 14px/1.6 Georgia, 'Times New Roman', serif; overflow-wrap: anywhere; }
+.paper-text { white-space: pre-wrap; }
+.paper h3 { margin: 28px 0 10px; padding-top: 18px; border-top: 1px solid #bbb; font: 700 16px Georgia, serif; }
+.paper-tag { margin-bottom: 14px; color: #666; font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: .6px; }
+@media print {
+  body { background: #fff; }
+  body * { visibility: hidden; }
+  .paper, .paper * { visibility: visible; }
+  .paper { position: absolute; inset: 0 auto auto 0; width: 100%; padding: 0; box-shadow: none; font-size: 12pt; }
+  .no-print { display: none !important; }
+}
+.lock-note { padding: 10px 13px; border: 1px solid var(--warn); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--warn) 12%, transparent); font-size: 12.5px; }
+.panel--gated { grid-template-columns: minmax(0, 1fr); }
+.panel--gated .workspace, .panel--gated .restore-status, .panel--gated > .error { grid-column: 1; }

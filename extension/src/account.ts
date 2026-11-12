@@ -1,5 +1,10 @@
 import type { Question, QuizFormat, ReviewItem } from './quiz'
 import { API_BASE } from './api'
+import { cloudConfig, createCloud } from './supabase'
+// With a Supabase project configured, accounts live there and nothing is saved to this device.
+const config = cloudConfig()
+const cloud = config ? createCloud(config) : null
+export const CLOUD_ACCOUNTS = !!cloud
 export type User = { id: string; name: string; email: string }
 export type Account = { token: string; user: User }
 export type SavedProgress = { version: 1; notes: string; noteName: string; count: number; format?: QuizFormat; hintsOn: boolean; questions: Question[]; answers: string[]; submitted: boolean; questionIndex: number; studyDays: string[]; review?: ReviewItem[]; adaptive?: boolean }
@@ -26,9 +31,19 @@ export function readLocalWorkspace(): SavedProgress | null {
 export function saveLocalWorkspace(progress: SavedProgress) {
   try { localStorage.setItem(WORKSPACE, JSON.stringify(progress)) } catch { /* Storage full or unavailable: the workspace then lasts for this session. */ }
 }
-export function readToken(): string | null { try { return sessionStorage.getItem('recall-session') } catch { return null } }
-export function rememberToken(token: string | null) { try { if (token) sessionStorage.setItem('recall-session', token); else sessionStorage.removeItem('recall-session') } catch { /* Session stays in memory. */ } }
+export function clearLocalWorkspace() { try { localStorage.removeItem(WORKSPACE) } catch { /* Nothing to clear. */ } }
+export function readToken(): string | null { if (cloud) return cloud.signedIn() ? 'cloud' : null; try { return sessionStorage.getItem('recall-session') } catch { return null } }
+export function rememberToken(token: string | null) { if (cloud) return; try { if (token) sessionStorage.setItem('recall-session', token); else sessionStorage.removeItem('recall-session') } catch { /* Session stays in memory. */ } }
 export async function accountRequest(path: string, body?: unknown, token?: string, signal?: AbortSignal) {
+  if (cloud) {
+    const input = (body ?? {}) as { email?: string; password?: string; name?: string; progress?: string }
+    if (path === 'register') return cloud.register(input.email ?? '', input.password ?? '', input.name ?? '')
+    if (path === 'login') return cloud.login(input.email ?? '', input.password ?? '')
+    if (path === 'me') return cloud.me()
+    if (path === 'logout') return cloud.logout()
+    if (path === 'progress') return cloud.save(input.progress ?? '{}', signal)
+    throw new Error('This needs the Recall backend, which is not part of account sign-in.')
+  }
   let response: Response
   try { response = await fetch(`${API_BASE}/account/${path}`, { method: body === undefined ? 'GET' : 'POST',
     headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -43,6 +58,13 @@ export async function accountRequest(path: string, body?: unknown, token?: strin
 }
 /** Opens Google's sign-in window from the extension and exchanges the resulting ID token for a Recall session. */
 export async function googleSignIn(): Promise<{ token: string; user: User; progress?: string | null }> {
+  if (cloud) {
+    if (typeof chrome === 'undefined' || !chrome.identity?.launchWebAuthFlow) throw new Error('Google sign-in works in the installed Chrome extension. Reload Recall at chrome://extensions and try again.')
+    let back: string | undefined
+    try { back = await chrome.identity.launchWebAuthFlow({ url: cloud.googleUrl(chrome.identity.getRedirectURL()), interactive: true }) }
+    catch (failure) { throw new Error('Google sign-in was cancelled or is not set up. Turn on the Google provider in Supabase and add this extension\'s redirect address to its allowed URLs.', { cause: failure }) }
+    return cloud.adopt(back ? new URL(back).hash : '')
+  }
   const { clientId } = await accountRequest('google')
   if (typeof clientId !== 'string' || !clientId) throw new Error('Google sign-in is not set up yet. Set RECALL_GOOGLE_CLIENT_ID for the backend and restart it. The README has the steps.')
   if (typeof chrome === 'undefined' || !chrome.identity?.launchWebAuthFlow) throw new Error('Google sign-in works in the installed Chrome extension. Reload Recall at chrome://extensions and try again.')

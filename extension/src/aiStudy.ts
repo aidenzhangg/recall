@@ -82,3 +82,34 @@ export async function gradeAnswer(input: { notes: string; prompt: string; answer
   ])
   return text.replace(/\*\*|^#+\s*/gm, '').slice(0, 2000)
 }
+
+const plain = (text: string) => text.replace(/^```\w*\n?|```$/gm, '').replace(/\*\*/g, '').replace(/^#+\s*/gm, '').trim()
+/** A new exam in the same format as a past paper: same layout, numbering and marks, different questions. */
+export async function predictPaper(paper: string): Promise<{ text: string; cut: boolean }> {
+  const engine = await currentEngine()
+  if (engine.kind === 'none') throw new Error('Connect an AI in Recall AI first.')
+  const budget = engine.kind === 'key' ? 14000 : 4000
+  const original = paper.trim().slice(0, budget)
+  const text = await complete([
+    { role: 'system', content: 'You are an experienced examiner who writes practice exam papers. You reply with the paper only, as plain text.' },
+    { role: 'user', content: `Below is a past exam paper. Write a NEW paper that predicts what a future sitting could look like.
+
+Keep exactly the same format, line by line: the same title and header lines (add "Prediction paper" to the title), the same instructions, the same section headings, the same question numbering and sub-parts such as (a), (b), (i), the same mark allocations written the same way, the same number of questions, and the same question types (multiple choice stays multiple choice with the same number of options, calculations stay calculations, essays stay essays).
+
+Change every question: test the same topics and skills at the same difficulty, but with different wording, different scenarios and different numbers. Do not repeat any original question. Do not include answers. Do not add notes, commentary or markdown. Keep the line breaks and blank lines of the original layout.
+
+PAST PAPER:
+${original}` },
+  ])
+  const written = plain(text)
+  if (written.length < 40) throw new Error('The AI did not return a usable paper. Try again.')
+  return { text: written.slice(0, 30000), cut: paper.trim().length > budget }
+}
+/** Model answers for a generated paper, numbered the same way. */
+export async function markScheme(paper: string): Promise<string> {
+  const text = await complete([
+    { role: 'system', content: 'You are an examiner writing a concise mark scheme. Plain text only.' },
+    { role: 'user', content: `Write a mark scheme for this paper. Use the same question numbers and sub-parts. For each, give the answer or the key points that earn the marks, matching the marks available. Be brief. No markdown.\n\nPAPER:\n${paper.slice(0, 14000)}` },
+  ])
+  return plain(text).slice(0, 30000)
+}

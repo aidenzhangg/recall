@@ -14,6 +14,8 @@ Recall runs entirely inside Chrome. Nobody has to start a server: notes, quizzes
 - **Camera focus.** An optional check on the focus timer that uses the webcam to estimate whether you are looking at the screen: looking at screen, looking away, eyes closed or no face. It shows screen attention as time looking at the screen divided by time tracked, counts how long you have looked away, and after the timeout you choose (15 seconds to 2 minutes) it chimes, pauses the timer and asks if you are still there.
 - **Site blocker.** Block distracting domains and their subdomains with one switch, quick-add buttons for common sites and a list you manage. It uses Chrome's blocking rules and records no browsing history.
 - **Dashboard.** Missed topics with one-click targeted practice and search links (Wikipedia, Khan Academy, YouTube, MIT OpenCourseWare). The links open a search; they are not curated recommendations.
+- **Prediction papers.** Upload a past paper PDF and, with an AI connected, Recall writes a new paper in the same format: same header, sections, numbering, sub-parts and marks, with different questions on the same topics. Save it as a PDF, answer it inside Recall, or add a mark scheme. It copies the paper's structure and wording style, not its fonts, logos or diagrams, and it is an AI guess at similar questions, not a real or leaked exam.
+- **Focus lock.** Starting the focus timer turns site blocking on and locks it: until the session finishes or you end it, sites cannot be removed and blocking cannot be turned off. Pages that were already open stay open until they are reloaded.
 - **Past papers.** Numbered questions found in an imported paper, one at a time, with self-review (papers carry no answer key).
 - **Flashcards and focus timer.** Flip, Got it / Still learning, a missed-card round, and a 15 to 60 minute timer.
 - **Optional account.** Register or use Google to keep progress on a backend you run or host. Without an account everything stays on this device.
@@ -69,6 +71,23 @@ Recall AI is the first screen. Until an AI is connected it can only search your 
 The key is saved only in this browser's storage and is sent only to the provider you picked, along with your question and the relevant parts of your notes. It is never written into this repository or the built extension. Free tiers have rate limits and their own terms. **AI settings** has **Remove key**, a model picker, and (where Chrome offers it) the on-device model, which needs no key at all. Do not save a key on a shared computer.
 
 With an AI connected: chat answers are written by the model, quiz hints explain the idea in three steps without giving the answer (the answer is shown if you ask after the third hint, or at once with Hints Mode off), quizzes and flashcards are written from your notes, and written answers get short feedback.
+
+### Accounts that save to the cloud (Supabase, no server)
+
+By default Recall saves on the device. To save to an account instead, connect a free Supabase project. The extension talks to Supabase directly, so there is no backend to host.
+
+1. Create a project at Supabase.
+2. Open **SQL Editor**, paste the contents of `supabase/schema.sql`, and press **Run**. This creates one `progress` table where each person can only read and write their own row.
+3. Open **Project Settings**, then **API**. Copy the **Project URL** and the **anon** (publishable) key.
+4. Copy `extension/.env.example` to `extension/.env.local` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+5. Optional: under **Authentication**, then **Sign In / Providers**, then **Email**, turn off "Confirm email" if you want people signed in the moment they register. Left on, they must open the emailed link first.
+6. Run `npm run build --prefix extension` and reload the extension.
+
+With this on, sign-in is the first screen, people stay signed in between sessions, and notes, quizzes and progress are saved to their account and not kept on the device. Anything studied before signing in is moved into the account on first sign-in.
+
+The Project URL and anon key are meant to be public; row-level security is what protects the data. **Never** use the `service_role` or secret key in the extension: it bypasses that security. As the project owner you can read stored notes in the Supabase dashboard, so tell your users.
+
+**Continue with Google** in this mode needs two more steps in Supabase: enable the Google provider under Authentication (it asks for a Google OAuth client ID and secret, which stay in Supabase), and add `https://<your-extension-id>.chromiumapp.org/` under Authentication, URL Configuration, Redirect URLs. Recall Connect (phone photos) still needs the Java backend.
 
 ### One shared key for everyone (optional)
 
