@@ -330,3 +330,42 @@ button.flashcard:hover { border-color: var(--accent); }
 .advanced summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
 .advanced[open] summary { margin-bottom: 12px; }
 .advanced .button-row { margin-top: 12px; }
+
+/* ---------- Sign in ---------- */
+.auth { display: grid; justify-items: center; padding-top: 4vh; }
+.auth-card { display: grid; gap: 16px; width: 100%; max-width: 380px; padding: 28px 24px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); }
+.auth-card > .profile-avatar, .auth-mark { justify-self: center; width: 52px; height: 52px; border-radius: 16px; font-size: 26px; }
+.auth-mark { font-size: 36px; }
+.auth-heading { display: grid; gap: 4px; text-align: center; }
+.auth-heading h2 { font-size: 22px; overflow-wrap: anywhere; }
+.auth-heading p { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.auth-card .profile-sync, .auth-card > .muted, .auth-switch { text-align: center; }
+.auth-switch { color: var(--muted); font-size: 12.5px; }
+.auth-switch .text-button { min-height: 0; padding: 0; }
+.save-status { background: transparent; }
+
+/* ---------- Calmer layout ---------- */
+.tabs { gap: 6px; }
+.theme-button { margin-top: auto; }
+.workspace { padding-top: 18px; }
+.content, .dashboard { gap: 16px; }
+.page-heading h2, .chat-header h2 { font-size: 22px; }
+.page-heading--row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hint-switch { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+.hint-switch input { width: 40px; height: 24px; }
+.hint-switch input::before { width: 16px; height: 16px; }
+.hint-switch input:checked::before { transform: translateX(16px); }
+.quick-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.phone-link { justify-self: center; color: var(--muted); }
+.session-overview { background: var(--surface); }
+.coach-messages { border: 0; background: transparent; padding: 4px 0; box-shadow: none; }
+.chat-empty { padding: 22px 0; }
+.chat-actions .ghost { border: 0; }
+.connect { justify-self: center; }
+.connect-providers button { padding: 9px 4px; font-size: 12.5px; white-space: nowrap; }
+.connect > a.secondary { text-decoration: none; }
+.connect .advanced p { margin-top: 6px; }
+.question { box-shadow: none; }
+.quiz-tools { border-top: 0; padding-top: 0; }
+.source { border: 0; padding: 0; background: none; }
+.material-panel { border-style: solid; }

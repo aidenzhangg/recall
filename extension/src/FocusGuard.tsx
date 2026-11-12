@@ -89,7 +89,7 @@ export default function FocusGuard({ running, onAway, onBack }: { running: boole
   }, [on])
   const state = status === 'live' ? snapshot.state : 'none'
   return <section className="card focus-guard" aria-labelledby="guard-title">
-    <div className="card-heading"><div><h3 id="guard-title">Camera focus</h3><span>Estimates whether you are looking at the screen</span></div><label className="switch"><span className="visually-hidden">Camera focus</span><input type="checkbox" role="switch" checked={on} onChange={e => { setNeedsPermission(false); setOn(e.target.checked) }} /></label></div>
+    <div className="card-heading"><div><h3 id="guard-title">Camera focus</h3><span>Pauses the timer when you look away</span></div><label className="switch"><span className="visually-hidden">Camera focus</span><input type="checkbox" role="switch" checked={on} onChange={e => { setNeedsPermission(false); setOn(e.target.checked) }} /></label></div>
     {on && <div className="guard-live">
       <div className={`guard-video guard-video--${state}`}><video ref={video} muted playsInline aria-label="Camera preview" /><span>{status === 'starting' ? 'Starting camera...' : GAZE_LABEL[state]}</span></div>
       <dl className="guard-stats"><div><dt>Screen attention</dt><dd>{status === 'live' ? `${snapshot.score}%` : '-'}</dd></div><div><dt>Looking away</dt><dd>{status === 'live' ? `${snapshot.awaySeconds}s` : '-'}</dd></div><div><dt>Tracked</dt><dd>{status === 'live' ? `${Math.floor(snapshot.observedSeconds / 60)}m ${snapshot.observedSeconds % 60}s` : '-'}</dd></div></dl>
@@ -98,6 +98,6 @@ export default function FocusGuard({ running, onAway, onBack }: { running: boole
     {checkIn && <div className="check-in" role="alert"><div><strong>Still with it?</strong><p>You looked away for a while{pausedTimer ? ', so the timer was paused' : ''}. Take a short break if you need one.</p></div><button className="primary" onClick={() => { setCheckIn(false); tracker.current.reset(); if (pausedTimer) onBack() }}>I'm back</button></div>}
     {needsPermission && <div className="check-in" role="alert"><div><strong>Allow the camera once</strong><p>Chrome asks in a new tab because the side panel cannot show the question. Press Allow there and camera focus turns on here by itself.</p></div><button className="primary" onClick={askPermission}>Allow camera</button></div>}
     {error && <p className="error" role="alert">{error}</p>}
-    <p className="muted">Video is analysed on this computer and is never saved or sent anywhere. The face model is downloaded from Google once. Looking at the screen is only a rough sign of focus, and a browser extension cannot lock your computer, so Recall pauses the timer and checks in instead.</p>
+    {on && <p className="muted">Video stays on this computer and is never saved.</p>}
   </section>
 }

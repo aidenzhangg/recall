@@ -30,7 +30,7 @@ export default function FocusTimer({ onComplete }: { onComplete: () => void }) {
   const total = minutes * 60
   const circumference = 2 * Math.PI * 88
   return <section className="content focus-view" aria-labelledby="focus-title">
-    <div className="page-heading"><h2 id="focus-title">Focus</h2><p>Work in timed sessions. Finishing one adds today to your streak.</p></div>
+    <div className="page-heading"><h2 id="focus-title">Focus</h2></div>
     <div className="card focus-panel">
       <div className="focus-durations" role="group" aria-label="Session duration">{[15, 25, 45, 60].map(value => <button key={value} aria-pressed={minutes === value} onClick={() => { setMinutes(value); reset(value) }}>{value} min</button>)}</div>
       <div className="focus-dial">

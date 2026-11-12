@@ -31,7 +31,7 @@ export default function Flashcards({ notes, onNotes }: { notes: string; onNotes:
     } catch (failure) { setNote(failure instanceof Error ? failure.message : 'Could not write cards.') }
     setWriting(false)
   }
-  return <section className="content"><div className="page-heading"><h2>Flashcards</h2><p>{written ? 'Written by AI from your notes, in plain words.' : 'Key terms from your notes. Say the meaning out loud before you flip.'}</p></div>
+  return <section className="content"><div className="page-heading"><h2>Flashcards</h2></div>
     {canWrite && notes.trim() && <button className="secondary" disabled={writing} onClick={() => void write()}>{writing ? 'Writing cards...' : written ? 'Write a new set with AI' : 'Write smarter cards with AI'}</button>}
     {note && <p className="error" role="alert">{note}</p>}
     {!cards.length ? <div className="empty"><h3>No cards yet</h3><p>Add notes with definitions or explanations and cards appear here.</p><button className="primary" onClick={onNotes}>Add notes</button></div>

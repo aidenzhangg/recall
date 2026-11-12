@@ -30,10 +30,29 @@ export default function Profile({ account, syncStatus, onAuthenticated, onSave, 
     finally { setBusy(false) }
   }
   async function action(callback: () => Promise<void>) { setBusy(true); setError(''); try { await callback() } catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not save. Try again.') } finally { setBusy(false) } }
-  return <section className="profile-panel" aria-labelledby="profile-title"><h2 id="profile-title">{account && !reauth ? 'Profile' : create ? 'Create account' : 'Sign in'}</h2>
-    {account && !reauth ? <><div className="profile-identity"><span className="profile-avatar" aria-hidden="true">{account.user.name.slice(0,1).toUpperCase()}</span><div><strong>{account.user.name}</strong><p>{account.user.email}</p></div></div><p className="profile-sync" role="status">{syncStatus}</p><p className="muted">Your notes, quiz answers, settings and activity history are saved to this Recall backend. Chat and running timers are not saved.</p><button className="primary" disabled={busy} onClick={() => void action(onSave)}>{busy ? 'Working' : 'Save progress now'}</button><button className="secondary" disabled={busy} onClick={() => void action(onSignOut)}>Save and sign out</button><button className="text-button" disabled={busy} onClick={() => { setReauth(true); setCreate(false); setEmail(account.user.email); setError('') }}>Sign in again</button><p className="muted">Accounts are stored on your local backend. Use the same server to restore progress; this is not a hosted cloud account.</p></> : <><form className="profile-form" onSubmit={e => void submit(e)}>
-      {create && <label>Name<input value={name} onChange={e => setName(e.target.value)} autoComplete="name" required maxLength={80} disabled={busy} /></label>}
-      <label>Email<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required maxLength={254} disabled={busy} /></label><label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete={create ? 'new-password' : 'current-password'} required minLength={create ? 10 : 1} maxLength={128} disabled={busy} /></label>
-      {create && <p className="muted">At least 10 characters. New accounts save this workspace; existing accounts restore their saved workspace.</p>}<button className="primary" disabled={busy}>{busy ? 'Please wait' : create ? 'Create account' : 'Sign in'}</button></form><div className="auth-divider" role="separator"><span>or</span></div><button type="button" className="secondary google-button" disabled={busy} onClick={() => void withGoogle()}><span className="google-mark" aria-hidden="true">G</span>Continue with Google</button><button className="text-button" disabled={busy} onClick={() => { setCreate(!create); setError('') }}>{create ? 'Already have an account? Sign in' : 'New to Recall? Create an account'}</button><p className="muted">Accounts need the Recall backend running (start-backend.cmd). Passwords are stored only as salted hashes, never as readable text. Guest study works without signing in.</p></>}
-    {error && <p className="error" role="alert">{error}</p>}</section>
+  const signedIn = account && !reauth
+  return <section className="auth" aria-labelledby="profile-title">
+    {signedIn ? <div className="auth-card">
+      <span className="profile-avatar" aria-hidden="true">{account.user.name.slice(0, 1).toUpperCase()}</span>
+      <div className="auth-heading"><h2 id="profile-title">{account.user.name}</h2><p>{account.user.email}</p></div>
+      <p className="profile-sync" role="status">{syncStatus}</p>
+      <button className="primary" disabled={busy} onClick={() => void action(onSave)}>{busy ? 'Working...' : 'Save now'}</button>
+      <button className="secondary" disabled={busy} onClick={() => void action(onSignOut)}>Sign out</button>
+      {error && <p className="error" role="alert">{error}</p>}
+    </div> : <div className="auth-card">
+      <span className="brand-mark auth-mark" aria-hidden="true">r</span>
+      <div className="auth-heading"><h2 id="profile-title">{create ? 'Create your account' : 'Welcome back'}</h2><p>{create ? 'Keep your notes and progress on every computer.' : 'Sign in to sync your notes and progress.'}</p></div>
+      <button type="button" className="secondary google-button" disabled={busy} onClick={() => void withGoogle()}><span className="google-mark" aria-hidden="true">G</span>Continue with Google</button>
+      <div className="auth-divider" role="separator"><span>or</span></div>
+      <form className="profile-form" onSubmit={e => void submit(e)}>
+        {create && <label>Name<input value={name} onChange={e => setName(e.target.value)} autoComplete="name" required maxLength={80} disabled={busy} /></label>}
+        <label>Email<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required maxLength={254} disabled={busy} /></label>
+        <label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete={create ? 'new-password' : 'current-password'} required minLength={create ? 10 : 1} maxLength={128} disabled={busy} placeholder={create ? 'At least 10 characters' : ''} /></label>
+        {error && <p className="error" role="alert">{error}</p>}
+        <button className="primary" disabled={busy}>{busy ? 'Please wait...' : create ? 'Create account' : 'Sign in'}</button>
+      </form>
+      <p className="auth-switch">{create ? 'Already have an account?' : 'New to Recall?'} <button type="button" className="text-button" disabled={busy} onClick={() => { setCreate(!create); setError('') }}>{create ? 'Sign in' : 'Create an account'}</button></p>
+      <p className="muted">You can keep studying without an account. Everything stays saved on this device.</p>
+    </div>}
+  </section>
 }

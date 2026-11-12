@@ -115,15 +115,11 @@ export default function HintCoach({ questions, current, notes, hintsOn, topics, 
   const smart = engine.kind !== 'none' || cloudOn
   const provider = PROVIDERS[settings.provider]
   const setup = <div className="connect">
-    <div className="connect-providers" role="group" aria-label="AI provider">{FREE.map(id => <button key={id} type="button" aria-pressed={settings.provider === id} onClick={() => { update({ provider: id, model: '' }); setModels([]) }}>{PROVIDERS[id].name}<span>{PROVIDERS[id].note}</span></button>)}</div>
-    <ol className="connect-steps">
-      <li>{provider.keyPage ? <a className="chip" href={provider.keyPage} target="_blank" rel="noreferrer">Open the {provider.name} key page</a> : 'Open your provider\'s key page.'}</li>
-      <li>{KEY_STEPS[settings.provider] ?? 'Create a key and copy it.'}</li>
-      <li>Paste it here and press Connect.</li>
-    </ol>
-    <div className="connect-row"><label className="visually-hidden" htmlFor="ai-key">Your {provider.name} key</label><input id="ai-key" type="password" autoComplete="off" spellCheck={false} value={settings.key} placeholder="Paste your key" onChange={e => update({ key: e.target.value })} onKeyDown={e => { if (e.key === 'Enter' && settings.key.trim()) void connect() }} /><button type="button" className="primary" disabled={!settings.key.trim() || connecting} onClick={() => void connect()}>{connecting ? 'Connecting...' : 'Connect'}</button></div>
+    <div className="connect-providers" role="group" aria-label="AI provider">{FREE.map(id => <button key={id} type="button" aria-pressed={settings.provider === id} onClick={() => { update({ provider: id, model: '' }); setModels([]) }}>{id === 'gemini' ? 'Gemini' : PROVIDERS[id].name}</button>)}</div>
+    {provider.keyPage && <a className="secondary" href={provider.keyPage} target="_blank" rel="noreferrer">1. Get a free {settings.provider === 'gemini' ? 'Gemini' : provider.name} key</a>}
+    <div className="connect-row"><label className="visually-hidden" htmlFor="ai-key">Your {provider.name} key</label><input id="ai-key" type="password" autoComplete="off" spellCheck={false} value={settings.key} placeholder="2. Paste your key" onChange={e => update({ key: e.target.value })} onKeyDown={e => { if (e.key === 'Enter' && settings.key.trim()) void connect() }} /><button type="button" className="primary" disabled={!settings.key.trim() || connecting} onClick={() => void connect()}>{connecting ? 'Connecting...' : 'Connect'}</button></div>
     {settingsNote && <p className="muted" role="status">{settingsNote}</p>}
-    <p className="muted">The key stays in this browser and goes only to {provider.name}, with your question and the relevant parts of your notes. Do not save a key on a shared computer.</p>
+    <details className="advanced"><summary>How do I get a key?</summary><p className="muted">{KEY_STEPS[settings.provider] ?? 'Create a key and copy it.'} The key stays in this browser and goes only to {provider.name}, with your question and the relevant parts of your notes.</p></details>
   </div>
   return <aside className="chat" aria-labelledby="coach-title">
     <header className="chat-header">
@@ -143,8 +139,8 @@ export default function HintCoach({ questions, current, notes, hintsOn, topics, 
     {question && <p className="coach-context">{question.prompt}</p>}
     <div className="coach-messages" role="log" aria-label="Recall AI conversation" aria-live="polite">
       {!history.length && <div className="chat-empty"><span className="chat-mark" aria-hidden="true">r</span>
-        {smart || !ready ? <><h3>{passages.length ? 'Ask anything about your notes' : 'What do you want to learn?'}</h3><p>I explain ideas in plain words, compare concepts, quiz you and give real hints.{passages.length ? ' Answers lean on your notes.' : ' Add notes and I will use them.'}{hintsOn && question ? ' Hints Mode is on, so I will guide you to quiz answers instead of giving them away.' : ''}</p></>
-        : <><h3>Connect a free AI to start chatting</h3><p>It takes about a minute and costs nothing. Until then I can only find matching lines in your notes.</p>{!showSettings && setup}</>}
+        {smart || !ready ? <><h3>{passages.length ? 'Ask anything about your notes' : 'What do you want to learn?'}</h3></>
+        : <><h3>Connect a free AI</h3><p>Takes about a minute and costs nothing.</p>{!showSettings && setup}</>}
       </div>}
       {history.map((item, i) => <div className={`coach-message ${item.role === 'You' ? 'coach-message--you' : ''}`} key={i}>{item.role === 'Recall' && <strong>Recall</strong>}<p>{item.text}</p>
         {item.sources?.map((source, n) => <blockquote key={n}>{source}</blockquote>)}
@@ -154,7 +150,7 @@ export default function HintCoach({ questions, current, notes, hintsOn, topics, 
       {busy && <div className="coach-message"><strong>Recall</strong>{draft ? <p>{draft}</p> : <p className="typing" aria-label="Recall is thinking"><span /><span /><span /></p>}</div>}
       <div ref={end} />
     </div>
-    {suggestions.length > 0 && <div className="chips suggestions" aria-label="Suggested questions">{suggestions.map(text => <button key={text} type="button" className="chip" disabled={busy} onClick={() => void ask(text)}>{text}</button>)}</div>}
+    {suggestions.length > 0 && (smart || !!question) && <div className="chips suggestions" aria-label="Suggested questions">{suggestions.map(text => <button key={text} type="button" className="chip" disabled={busy} onClick={() => void ask(text)}>{text}</button>)}</div>}
     <form className="coach-form" onSubmit={e => { e.preventDefault(); void ask(message) }}><label className="visually-hidden" htmlFor="hint-message">Your message</label><textarea id="hint-message" rows={1} maxLength={2000} value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(message) } }} placeholder={question ? 'Say where you are stuck' : 'Message Recall AI'} /><button className="send" aria-label="Send" disabled={!message.trim() || busy}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg></button></form>
   </aside>
 }
