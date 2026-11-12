@@ -13,10 +13,18 @@ export function parseProgress(raw: string): SavedProgress {
   return { review, adaptive: v.adaptive !== false, version: 1, notes: v.notes, noteName: v.noteName, count: [5,10,15].includes(v.count) ? v.count : 5, hintsOn: v.hintsOn, format: ['blank','choice','long','mixed'].includes(v.format) ? v.format : 'blank', questions: v.questions.map((q: Question) => {
       const kind = q.kind ?? 'blank'
       if (!['blank','choice','long'].includes(kind) || (kind === 'choice' && (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 4 || !q.options.every(option => typeof option === 'string') || new Set(q.options).size !== q.options.length || !q.options.includes(q.answer)))) throw new Error('Invalid saved question')
-      return { prompt: q.prompt, answer: q.answer, kind, ...(typeof q.source === 'string' ? { source: q.source } : {}), ...(typeof q.topic === 'string' ? { topic: q.topic } : {}), ...(kind === 'choice' ? { options: q.options } : {}) }
+      return { prompt: q.prompt, answer: q.answer, kind, ...(typeof q.source === 'string' ? { source: q.source } : {}), ...(typeof q.topic === 'string' ? { topic: q.topic } : {}), ...(typeof q.explanation === 'string' ? { explanation: q.explanation.slice(0, 800) } : {}), ...(kind === 'choice' ? { options: q.options } : {}) }
     }),
     answers: v.questions.map((_: unknown, i: number) => v.answers[i] ?? ''), submitted: v.submitted,
     questionIndex: Math.max(0, Math.min(Number.isInteger(v.questionIndex) ? v.questionIndex : 0, v.questions.length - 1)), studyDays: [...new Set<string>(v.studyDays)].sort().slice(-366) }
+}
+const WORKSPACE = 'recall-workspace'
+/** Guest progress is kept in this browser, so Recall works with no account and no backend. */
+export function readLocalWorkspace(): SavedProgress | null {
+  try { const raw = localStorage.getItem(WORKSPACE); return raw ? parseProgress(raw) : null } catch { return null }
+}
+export function saveLocalWorkspace(progress: SavedProgress) {
+  try { localStorage.setItem(WORKSPACE, JSON.stringify(progress)) } catch { /* Storage full or unavailable: the workspace then lasts for this session. */ }
 }
 export function readToken(): string | null { try { return sessionStorage.getItem('recall-session') } catch { return null } }
 export function rememberToken(token: string | null) { try { if (token) sessionStorage.setItem('recall-session', token); else sessionStorage.removeItem('recall-session') } catch { /* Session stays in memory. */ } }

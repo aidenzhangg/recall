@@ -1,0 +1,58 @@
+import { readFileSync } from 'node:fs'
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import ts from 'typescript'
+const load = async name => {
+  const js = ts.transpileModule(readFileSync(new URL(`../src/${name}.ts`, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
+  return import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'))
+}
+const { parseQuestions, parseCards, excerpt } = await load('aiParse')
+const { classify, FocusTracker, signals } = await load('gaze')
+
+test('model output becomes valid questions and malformed items are dropped', () => {
+  const reply = 'Sure! ```json\n[{"question":"Why does water move into a cell placed in pure water?","options":["Osmosis","Diffusion of salt","Active transport","Evaporation"],"answer":"osmosis","explanation":"Water moves toward the higher solute concentration.","topic":"Osmosis"},{"question":"Bad one","options":["A","B","C"],"answer":"Not listed"},{"question":"Explain why mitochondria matter.","answer":"They release energy the cell can use."},{"question":"short","answer":"x"}]\n``` hope that helps'
+  const questions = parseQuestions(reply, 10)
+  assert.equal(questions.length, 2)
+  assert.deepEqual([questions[0].kind, questions[0].answer, questions[0].options.length], ['choice', 'Osmosis', 4])
+  assert.equal(questions[0].explanation, 'Water moves toward the higher solute concentration.')
+  assert.equal(questions[1].kind, 'long')
+  assert.ok(questions.every(q => q.source.startsWith('ai:')))
+  assert.deepEqual(parseQuestions('I cannot do that.', 5), [])
+  assert.equal(parseQuestions(reply, 1).length, 1)
+})
+test('flashcards are parsed, de-duplicated and capped', () => {
+  const cards = parseCards('[{"front":"Osmosis","back":"Water moving across a membrane."},{"front":"osmosis","back":"dup"},{"front":"","back":"x"},{"front":"ATP","back":"The cell\'s energy currency."}]', 5)
+  assert.deepEqual(cards.map(card => card.front), ['Osmosis', 'ATP'])
+})
+test('the excerpt puts focus passages first and respects the budget', () => {
+  const passages = ['Plants need light.', 'Mitochondria release energy.', 'Osmosis moves water.']
+  assert.ok(excerpt(passages, 'osmosis', 200).startsWith('Osmosis moves water.'))
+  assert.ok(excerpt(passages, '', 30).length <= 30)
+})
+const facing = { yaw: .5, pitch: .55, blink: 0, side: .1, up: .1, down: .3 }
+test('gaze is classified from head pose and eye signals', () => {
+  assert.equal(classify(null), 'none')
+  assert.equal(classify(facing), 'screen')
+  assert.equal(classify({ ...facing, down: .6 }), 'screen')
+  assert.equal(classify({ ...facing, yaw: .78 }), 'away')
+  assert.equal(classify({ ...facing, side: .85 }), 'away')
+  assert.equal(classify({ ...facing, blink: .9 }), 'closed')
+  const points = []; points[1] = { x: .5, y: .5 }; points[234] = { x: .3, y: .5 }; points[454] = { x: .7, y: .5 }; points[10] = { x: .5, y: .2 }; points[152] = { x: .5, y: .8 }
+  const read = signals(points, { eyeBlinkLeft: .2, eyeBlinkRight: .4 })
+  assert.ok(Math.abs(read.yaw - .5) < 1e-9 && Math.abs(read.pitch - .5) < 1e-9 && Math.abs(read.blink - .3) < 1e-9)
+  assert.equal(classify(read), 'screen')
+  assert.equal(signals([], {}), null)
+})
+test('focus score counts time on screen, ignores blinks, and checks in once after the timeout', () => {
+  const tracker = new FocusTracker(5)
+  let now = 1000, snapshot
+  const run = (state, seconds) => { for (let i = 0; i < seconds * 5; i++) { now += 200; snapshot = tracker.update(state, now) } }
+  tracker.update('screen', now)
+  run('screen', 10); assert.equal(snapshot.score, 100)
+  now += 200; snapshot = tracker.update('closed', now); assert.equal(snapshot.awaySeconds, 0)
+  let alerts = 0
+  for (let i = 0; i < 50; i++) { now += 200; snapshot = tracker.update('away', now); if (snapshot.checkIn) alerts++ }
+  assert.equal(alerts, 1); assert.equal(snapshot.awaySeconds, 10); assert.equal(snapshot.score, 50)
+  run('screen', 1); assert.equal(snapshot.awaySeconds, 0)
+  now += 60000; snapshot = tracker.update('none', now); assert.equal(snapshot.awaySeconds, 0)
+})

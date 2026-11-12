@@ -4,42 +4,65 @@ A Chrome side-panel workspace for studying your own notes and course materials. 
 
 ## What works
 
-- Import TXT/Markdown or selectable-text PDFs, including past papers. PDF extraction uses the Java backend, orders text by page position and reports page/word counts and missing-text warnings. Scanned PDFs need OCR and are not supported yet.
-- Create fill-in-the-blank, multiple-choice, long-answer or mixed practice. Wrapped PDF body lines are joined before question generation, title-like headings and page numbers are skipped, and questions are selected from definitions and concept explanations rather than arbitrary long words. Administrative lines are filtered, and the optional Focus topic limits what is included. Fewer questions are returned when there is insufficient matching content. The Spring Boot endpoint prioritizes previously missed material; the extension has a local fallback.
-- Track misses and successful attempts per source passage, schedule later review after correct responses, retry answers and save history with account progress. This is a rule-based review scheduler, not a trained adaptive ML model.
-- Block distracting domains and their subdomains from **Block sites**. The on/off control and domain list stay on this browser profile; blocking uses Chrome rules without recording browsing history. Existing pages are not closed.
-- Ask Recall AI a question and get the matching passages quoted from your own notes. With a quiz question selected and Hints Mode on it gives stepped hints (length and first letter, a related line from your notes, then a letter pattern) without revealing the answer; with Hints Mode off it shows the answer and its source line. By default this is local keyword search, so it only quotes what was imported and says so when nothing matches.
-- Optional on-device AI: where Chrome's built-in Prompt API (Gemini Nano) is available, Recall AI can use it to write a short explanation grounded in the matched note lines. It runs inside the browser with no API key, account or network call to an AI service; one click in Recall AI starts Chrome's model download. Replies that would reveal a hidden quiz answer are discarded, and answers not based on your notes are labelled as general knowledge. Without the built-in model, notes search is used.
-- See missed topics on the dashboard with a one-click targeted practice session and search links (Wikipedia, Khan Academy, YouTube, MIT OpenCourseWare) for each. The links open a search for the topic; they are not curated recommendations.
-- Practise numbered questions detected in an imported past paper, one at a time, with self-review (papers carry no answer key).
-- Use flashcards with flip, Got it / Still learning sorting and a missed-card round, plus a deadline-based focus timer. Long answers are explicitly self-reviewed. Camera gaze check-ins are planned only; nothing uses the camera.
-- Register/sign in to save progress. Local file storage is the default; setting a database address switches accounts to PostgreSQL (for example Supabase), with no Docker.
-- Multiple choice asks a real question ("Which of these is the movement of water across a membrane?") and marks your pick right or wrong the moment you choose. With Hints Mode on you can try again; with it off the correct option is shown. A wrong first pick still counts as a miss for review.
-- Optionally use a hosted language model through your backend with a free-tier key. The key stays on the backend.
-- Pair a phone from Connect using a locally generated QR code. Open the browser upload page without installing an app, send a JPEG/PNG, then refresh the desktop inbox to review/transcribe and import its text.
+Recall runs entirely inside Chrome. Nobody has to start a server: notes, quizzes, flashcards, review history and settings are saved in the browser. The Java backend is optional and only adds accounts that sync, phone photo transfer and a shared AI key.
 
-The interface uses a compact utility layout, Space Grotesk + IBM Plex Sans typography, IBM Plex Mono for status/data, and charcoal/signal-green or light surfaces.
+- **Notes and PDFs.** Paste notes or import TXT, Markdown or PDF files, including past papers. PDFs are read in the browser, in reading order, with page and word counts and a warning for pages that have no selectable text. Scanned pages need text recognition, which is not built yet.
+- **Recall AI chat.** A real conversation about your notes: explanations in plain words, comparisons, follow-up questions, "quiz me". It reads the relevant parts of your notes and writes its own answer rather than pasting lines back, then shows which note lines it leaned on. With a quiz question selected and Hints Mode on, it gives stepped hints and never the answer; a reply that would leak the answer is thrown away.
+- **AI-written quizzes and flashcards.** With an AI engine on, quizzes are written from the meaning of your notes (real questions, plausible wrong options, a one-line explanation after you answer) and aimed at the topics you have missed. Flashcards can be written the same way.
+- **Three AI engines, no key in the code.** (1) Chrome's on-device model where available: free, private, one download, no key. (2) Your own key from a provider with a free tier (Groq, Google Gemini, OpenRouter) or any OpenAI-compatible service, entered under **AI settings**. (3) No AI at all: Recall falls back to rule-based questions and a search of your notes, and says so.
+- **Practice.** Multiple choice (marked the moment you pick), fill in the blank, long answer or mixed. Misses and correct answers are tracked per passage, missed material comes back first, and a later review is scheduled after correct answers. This is a rule-based scheduler, not a trained model.
+- **Camera focus.** An optional check on the focus timer that uses the webcam to estimate whether you are looking at the screen: looking at screen, looking away, eyes closed or no face. It shows screen attention as time looking at the screen divided by time tracked, counts how long you have looked away, and after the timeout you choose (15 seconds to 2 minutes) it chimes, pauses the timer and asks if you are still there.
+- **Site blocker.** Block distracting domains and their subdomains with one switch, quick-add buttons for common sites and a list you manage. It uses Chrome's blocking rules and records no browsing history.
+- **Dashboard.** Missed topics with one-click targeted practice and search links (Wikipedia, Khan Academy, YouTube, MIT OpenCourseWare). The links open a search; they are not curated recommendations.
+- **Past papers.** Numbered questions found in an imported paper, one at a time, with self-review (papers carry no answer key).
+- **Flashcards and focus timer.** Flip, Got it / Still learning, a missed-card round, and a 15 to 60 minute timer.
+- **Optional account.** Register or use Google to keep progress on a backend you run or host. Without an account everything stays on this device.
+- **Recall Connect (needs the backend).** Pair a phone with a QR code, send a photo from its browser, then review and import the text on the desktop.
+
+The interface is a dark or light side-panel workspace set in Outfit and IBM Plex Sans.
 
 ## Stack
 
-React, TypeScript, Vite, plain CSS, Chrome Manifest V3, Java 21, Spring Boot, JDBC/PostgreSQL, PDFBox, Maven and GitHub Actions. Hints and quizzes use local rules. By default no external AI provider or API key is used; a hosted model is opt-in through backend settings.
+React, TypeScript, Vite, plain CSS, Chrome Manifest V3, pdf.js, MediaPipe Face Landmarker, and an optional Java 21 / Spring Boot backend with JDBC/PostgreSQL, PDFBox and Maven. No API key is stored in this repository or in the built extension.
 
-## Run locally
+## Run it
 
-Install Node.js 24 and JDK 21. From the repository root:
+Install Node.js 24. From the repository root:
 
 ```powershell
 npm ci --prefix extension
 npm run build --prefix extension
+```
+
+Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `extension/dist` (not `extension` or `public`). Click Recall's toolbar icon. That is everything needed to use Recall; no backend has to run. To share it with someone else, send them the `extension/dist` folder (zipped) and they load it the same way, or publish it to the Chrome Web Store.
+
+Rebuild and reload the extension after source changes. For frontend development, use `npm run dev --prefix extension`; the installed extension uses built assets, not Vite hot reload.
+
+### Turning on AI
+
+Open **Recall AI**, then **AI settings**.
+
+- **On-device model.** If your Chrome offers its built-in model, a **Turn on** button appears. It downloads once and then runs on your computer.
+- **Your own key.** Pick a provider, create a free key on that provider's site, paste it, choose **Find models**, pick one and **Save**. The key is kept in this browser's storage and sent only to the provider you picked, together with your question and the relevant parts of your notes. Free tiers have their own limits and terms. Use **Remove key** to delete it.
+
+Anyone who can open this browser profile can use a saved key, so do not save one on a shared computer.
+
+### Camera focus
+
+Open **Focus** and switch on **Camera focus**. Chrome asks for camera permission; if the side panel cannot show the prompt, open Recall in a full tab once and allow it there. The first start downloads Google's face-landmark model (a few megabytes), so it needs a connection that one time. Frames are analysed on your computer and are never saved or uploaded.
+
+It estimates head direction and eye closure, not what you are thinking, so treat the percentage as a rough signal. A browser extension is not allowed to lock the computer, so Recall pauses the timer and checks in instead.
+
+### The optional backend
+
+Only needed for accounts that sync, Recall Connect, or one AI key shared by all signed-in users. Install JDK 21, then:
+
+```powershell
 cd backend
 .\mvnw.cmd spring-boot:run
 ```
 
-On Windows you can instead run `.\start-backend.cmd` from the repository root (or double-click it); it works from any folder. Note that `mvnw.cmd` must be run as `.\mvnw.cmd` from inside `backend`, not from the root. The backend is ready when the log shows `Started BackendApplication`.
-
-Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `extension/dist` (not `extension` or `public`). Click Recall's toolbar icon. Rebuild and reload the extension after source changes. Health check: `http://localhost:8080/api/health`.
-
-For frontend development, use `npm run dev --prefix extension` from the root. The installed extension uses built assets, not Vite hot reload.
+On Windows you can instead run `.\start-backend.cmd` from the repository root (or double-click it). `mvnw.cmd` must be run as `.\mvnw.cmd` from inside `backend`. The backend is ready when the log shows `Started BackendApplication`. Health check: `http://localhost:8080/api/health`.
 
 ### Private settings
 
@@ -56,9 +79,9 @@ By default accounts are stored in local files under `backend/data`. To use a rea
 
 The address can be the `postgresql://...` form providers show or a JDBC address. TLS is required for any host other than this computer. The table is created on first start, and accounts made earlier in local-file mode are copied into the database once so they keep working. A small connection pool keeps hosted free tiers within their connection limits. Login sessions stay in memory, so sign in again after a backend restart. MongoDB is not supported; the account store is SQL.
 
-### AI answers with a key (optional)
+### A shared AI key on the backend (optional)
 
-Recall AI can use a hosted language model through any OpenAI-compatible API. Several providers have a free tier with a free key: Groq, Google Gemini (AI Studio) and OpenRouter's free models. Ollama runs a model on your own computer with no key at all.
+Instead of each person entering their own key in the extension, a hosted backend can hold one key for all signed-in users, using any OpenAI-compatible API. Several providers have a free tier with a free key: Groq, Google Gemini (AI Studio) and OpenRouter's free models. Ollama runs a model on your own computer with no key at all.
 
 1. Create a key on the provider's site and pick a model name from its model list.
 2. In `backend/recall.local.properties` set `recall.ai.provider` (`groq`, `gemini`, `openrouter`, `openai` or `ollama`), `recall.ai.model` and `recall.ai.key` (environment: `RECALL_AI_PROVIDER`, `RECALL_AI_MODEL`, `RECALL_AI_KEY`; `RECALL_AI_BASE_URL` for any other compatible service).
@@ -107,11 +130,11 @@ Set `VITE_API_BASE` at build time to the HTTPS backend `/api` URL. The build add
 
 ## Privacy and limits
 
-Quiz generation sends the provided notes and review history to your Recall backend, without a model request. Signed-in snapshots are stored on the configured backend. Hints send only the selected prompt and message to your Recall backend. The application does not call an external AI provider or read an AI API key. Passwords use salted PBKDF2 hashes. Local files and PostgreSQL application data are not encrypted by this application; secure storage/backups at deployment time.
+Without an account, notes and progress stay in this browser. With an AI key saved, your question and the relevant parts of your notes go straight from the browser to the provider you chose; with the on-device model nothing leaves the computer. Camera frames never leave the computer. When signed in, progress snapshots are stored on the backend you configured, and quiz requests may be sent to it. Passwords use salted PBKDF2 hashes. Local files and PostgreSQL application data are not encrypted by this application; secure storage and backups at deployment time.
 
 Pairing capabilities are kept in URL fragments on the phone link, removed from its address bar after loading, and sent in a header rather than a query string. The server retains a hash of the capability. Keep pairing links private. Uploads are accessible only through the paired account's authenticated inbox. Validation errors return generic messages instead of echoing rejected values.
 
-Gaze estimation, webcam capture, trained attention models, automated image transcription, semantic grading, external learning-resource recommendations and direct device-to-device sharing remain planned. A timer does not measure attention. Locally generated questions use conservative English-language text patterns, not semantic understanding or knowledge of your exam syllabus. They can miss equations, unusual sentence structures and important details; review the extracted material and use Focus topic or edit the source text to narrow scope; imported past papers are not automatically reconstructed into exam marking schemes.
+Not built: text recognition for scanned PDFs and phone photos, locking the computer, trained attention models, semantic grading of long answers and direct device-to-device sharing. AI-written questions can be wrong, so check anything surprising against your notes. Without an AI engine, questions come from conservative English-language text patterns and can miss equations and unusual sentences; use Focus topic or edit the notes to narrow scope. The camera check, the on-device model, provider keys and Google sign-in have automated tests for their logic but have not been exercised end to end from this repository.
 
 ## Checks
 

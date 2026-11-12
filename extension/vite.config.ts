@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 
@@ -8,7 +8,12 @@ export default defineConfig(({ mode }) => {
   const base = loadEnv(mode, process.cwd()).VITE_API_BASE
   return {
     plugins: [react(), {
-      name: 'recall-backend-permission',
+      name: 'recall-extension-assets',
+      // The camera-focus model runtime must ship inside the extension: Chrome does not allow remote code.
+      buildStart() {
+        mkdirSync('public/mediapipe', { recursive: true })
+        for (const file of ['vision_wasm_internal.js', 'vision_wasm_internal.wasm']) copyFileSync(`node_modules/@mediapipe/tasks-vision/wasm/${file}`, `public/mediapipe/${file}`)
+      },
       closeBundle() {
         if (!base) return
         const manifest = JSON.parse(readFileSync('dist/manifest.json', 'utf8'))

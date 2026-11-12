@@ -1,5 +1,5 @@
 export type QuizFormat = 'blank' | 'choice' | 'long' | 'mixed'
-export type Question = { prompt: string; answer: string; kind?: Exclude<QuizFormat, 'mixed'>; options?: string[]; source?: string; topic?: string }
+export type Question = { prompt: string; answer: string; kind?: Exclude<QuizFormat, 'mixed'>; options?: string[]; source?: string; topic?: string; explanation?: string }
 const logistics = /office hours|all rights reserved|copyright|contact (?:me|us|the instructor)|assignment (?:deadline|due)|submission deadline|course (?:code|outline|syllabus)|lecture slides (?:are|will)|slides (?:are|will be) (?:available|posted)|download (?:the|these) slides|next lecture (?:is|will)|attendance (?:is|will)|email (?:me|the instructor)|please (?:submit|upload|bring)|due (?:date|on)|instructor:|professor:|lecturer:/i
 function isLogistics(line: string) {
   const numberedLabel = /^[A-Z]{2,8}\s*-?\s*[0-9]{2,4}[A-Z]?\b/i.test(line)
