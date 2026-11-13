@@ -61,25 +61,52 @@ export async function accountRequest(path: string, body?: unknown, token?: strin
   if (!response.ok) throw new Error(response.status === 400 ? 'Check your details. New passwords need at least 10 characters.' : data.message ?? data.detail ?? (response.status === 401 ? 'Please sign in again.' : response.status === 409 ? 'An account already exists for this email.' : response.status === 429 ? 'Too many attempts. Please wait five minutes.' : 'Account storage is unavailable. Try again.'))
   return data
 }
-/** Opens Google's sign-in window from the extension and exchanges the resulting ID token for a Recall session. */
-export async function googleSignIn(): Promise<{ token: string; user: User; progress?: string | null }> {
+const NOT_INSTALLED = 'Google sign-in works in the installed Chrome extension. Reload Recall at chrome://extensions and try again.'
+/** Opens a small, centred sign-in window and resolves with the address it was sent back to, or null if it was closed first. */
+async function authWindow(url: string): Promise<string | null> {
+  if (typeof chrome === 'undefined' || !chrome.windows?.create || !chrome.identity?.getRedirectURL) throw new Error(NOT_INSTALLED)
+  const redirect = chrome.identity.getRedirectURL()
+  const width = 480, height = 640
+  const parent = await chrome.windows.getCurrent().catch(() => null)
+  const at = parent?.left !== undefined && parent.width && parent.top !== undefined && parent.height
+    ? { left: Math.max(0, Math.round(parent.left + (parent.width - width) / 2)), top: Math.max(0, Math.round(parent.top + (parent.height - height) / 2)) } : {}
+  const popup = await chrome.windows.create({ url, type: 'popup', width, height, focused: true, ...at })
+  if (!popup) throw new Error('Could not open the Google sign-in window. Try again.')
+  const tabId = popup.tabs?.[0]?.id
+  return new Promise(resolve => {
+    const finish = (result: string | null) => {
+      chrome.tabs.onUpdated.removeListener(onUpdated); chrome.windows.onRemoved.removeListener(onRemoved)
+      resolve(result)
+    }
+    // Sign-in ends when the window is sent to this extension's redirect address; the result is in that address.
+    const onUpdated = (id: number, change: { url?: string }, tab: { url?: string; pendingUrl?: string }) => {
+      const reached = [change.url, tab.pendingUrl, tab.url].find(address => address?.startsWith(redirect))
+      if (id !== tabId || !reached) return
+      finish(reached)
+      if (popup.id !== undefined) void chrome.windows.remove(popup.id).catch(() => {})
+    }
+    const onRemoved = (id: number) => { if (id === popup.id) finish(null) }
+    chrome.tabs.onUpdated.addListener(onUpdated); chrome.windows.onRemoved.addListener(onRemoved)
+  })
+}
+/** Signs in with Google. Resolves with null when the person closes the window without finishing. */
+export async function googleSignIn(): Promise<{ token: string; user: User; progress?: string | null } | null> {
+  if (typeof chrome === 'undefined' || !chrome.identity?.getRedirectURL) throw new Error(NOT_INSTALLED)
   if (cloud) {
-    if (typeof chrome === 'undefined' || !chrome.identity?.launchWebAuthFlow) throw new Error('Google sign-in works in the installed Chrome extension. Reload Recall at chrome://extensions and try again.')
-    let back: string | undefined
-    try { back = await chrome.identity.launchWebAuthFlow({ url: cloud.googleUrl(chrome.identity.getRedirectURL()), interactive: true }) }
-    catch (failure) { throw new Error('Google sign-in was cancelled or is not set up. Turn on the Google provider in Supabase and add this extension\'s redirect address to its allowed URLs.', { cause: failure }) }
-    return cloud.adopt(back ? new URL(back).hash : '')
+    const back = await authWindow(cloud.googleUrl(chrome.identity.getRedirectURL()))
+    if (!back) return null
+    const returned = new URL(back)
+    if (returned.searchParams.get('error') || new URLSearchParams(returned.hash.slice(1)).get('error')) throw new Error('Google sign-in is not available right now. Try again, or sign in with email.')
+    return cloud.adopt(returned.hash)
   }
   const { clientId } = await accountRequest('google')
   if (typeof clientId !== 'string' || !clientId) throw new Error('Google sign-in is not set up yet. Set RECALL_GOOGLE_CLIENT_ID for the backend and restart it. The README has the steps.')
-  if (typeof chrome === 'undefined' || !chrome.identity?.launchWebAuthFlow) throw new Error('Google sign-in works in the installed Chrome extension. Reload Recall at chrome://extensions and try again.')
   const nonce = crypto.randomUUID()
   const query = new URLSearchParams({ client_id: clientId, response_type: 'id_token', redirect_uri: chrome.identity.getRedirectURL(), scope: 'openid email profile', nonce, prompt: 'select_account' })
-  let redirect: string | undefined
-  try { redirect = await chrome.identity.launchWebAuthFlow({ url: `https://accounts.google.com/o/oauth2/v2/auth?${query}`, interactive: true }) }
-  catch (failure) { throw new Error('Google sign-in was cancelled or blocked. Check that the redirect address of this extension is allowed for the client ID.', { cause: failure }) }
-  const idToken = redirect ? new URLSearchParams(new URL(redirect).hash.slice(1)).get('id_token') : null
-  if (!idToken) throw new Error('Google did not return a sign-in token. Try again.')
+  const back = await authWindow(`https://accounts.google.com/o/oauth2/v2/auth?${query}`)
+  if (!back) return null
+  const idToken = new URLSearchParams(new URL(back).hash.slice(1)).get('id_token')
+  if (!idToken) throw new Error('Google sign-in is not available right now. Try again, or sign in with email.')
   return accountRequest('google', { idToken, nonce })
 }
 export async function saveProgress(account: Account, progress: SavedProgress, signal?: AbortSignal) { return accountRequest('progress', { progress: JSON.stringify(progress) }, account.token, signal) }

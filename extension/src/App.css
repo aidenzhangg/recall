@@ -332,7 +332,8 @@ button.flashcard:hover { border-color: var(--line-strong); transform: translateY
 .auth-switch .text-button { min-height: 0; padding: 0; }
 .auth-divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font: 10px var(--font-mono); text-transform: uppercase; }
 .auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
-.google-mark { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #fff; color: #4285f4; font: 700 13px var(--font-display); }
+.google-mark { display: grid; place-items: center; flex-shrink: 0; width: 20px; height: 20px; }
+.google-mark svg { display: block; width: 20px; height: 20px; }
 
 /* ---------- Prediction paper ---------- */
 .prediction { display: grid; gap: 14px; min-width: 0; }
