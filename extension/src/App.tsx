@@ -14,8 +14,8 @@ import { appendMaterial } from './material'
 import Flashcards from './Flashcards'
 import PredictionPaper from './PredictionPaper'
 import Logo from './Logo'
-import { accountRequest, clearLocalWorkspace, CLOUD_ACCOUNTS, parseProgress, readLocalWorkspace, readToken, rememberToken, saveProgress } from './account'
-import type { Account, SavedProgress } from './account'
+import { accountRequest, clearLocalWorkspace, CLOUD_ACCOUNTS, parseProgress, readToken, rememberToken, saveProgress } from './account'
+import type { Account, SavedChat, SavedProgress } from './account'
 import { dateKey, recentDays, streakLength } from './activity'
 import './App.css'
 import { makeQuestions, isCorrect, adaptiveQuestions, recordAttempt } from './quiz'
@@ -28,9 +28,9 @@ function NavIcon({ name }: { name: Tab }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{name === 'Block' ? <><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z"/><path d="m9 9 6 6m0-6-6 6"/></> : name === 'Connect' ? <><rect x="4" y="2" width="10" height="18" rx="2" /><path d="M8 17h2m7-10 4 4-4 4m-5-4h9" /></> : name === 'Cards' ? <><rect x="3" y="6" width="15" height="15" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></> : name === 'Focus' ? <><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2M9 2h6" /></> : name === 'Dashboard' ? <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></> : name === 'Notes' ? <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></> : name === 'Practice' ? <><rect x="4" y="3" width="16" height="18" rx="3" /><path d="m8 9 1.5 1.5L12 8m2 2h2M8 15h8" /></> : <><path d="M20 15a3 3 0 0 1-3 3H9l-5 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" /><path d="M8 8h8M8 12h5" /></>}</svg>
 }
 function App() {
-  // Study data is only ever saved to an account. A workspace left on this device by an earlier version is read once so it can move into the account.
-  const [local] = useState(readLocalWorkspace)
-  const [studyDays, setStudyDays] = useState(() => local?.studyDays ?? [])
+  // Study data is only ever saved to an account. Anything an earlier version left on this device is removed, so signed-out sessions start empty.
+  useState(clearLocalWorkspace)
+  const [studyDays, setStudyDays] = useState<string[]>([])
   const recordStudyDay = useCallback(() => {
     const today = dateKey(new Date())
     setStudyDays(previous => previous.includes(today) ? previous : [...previous, today].sort().slice(-366))
@@ -47,39 +47,42 @@ function App() {
   const [blocker, setBlocker] = useState<BlockerState | null>(null)
   // Recall always guides with hints; there is no mode that hands out answers while you are working.
   const hintsOn = true
-  const [notes, setNotes] = useState(local?.notes ?? '')
-  const [noteName, setNoteName] = useState(local?.noteName ?? 'Pasted notes')
+  const [notes, setNotes] = useState('')
+  const [noteName, setNoteName] = useState('Pasted notes')
   const [error, setError] = useState('')
   const generationId = useRef(0)
   const [generating, setGenerating] = useState(false)
   const [quizOrigin, setQuizOrigin] = useState('')
-  const [count, setCount] = useState(local?.count ?? 5)
+  const [count, setCount] = useState(5)
   const [focusTopic, setFocusTopic] = useState('')
-  const [review, setReview] = useState<ReviewItem[]>(local?.review ?? [])
-  const [adaptive, setAdaptive] = useState(local?.adaptive ?? true)
-  const [format, setFormat] = useState<QuizFormat>(local?.format ?? 'choice')
-  const [questions, setQuestions] = useState<Question[]>(local?.questions ?? [])
+  const [review, setReview] = useState<ReviewItem[]>([])
+  const [adaptive, setAdaptive] = useState(true)
+  const [format, setFormat] = useState<QuizFormat>('choice')
+  const [questions, setQuestions] = useState<Question[]>([])
   const sessionKey = useMemo(() => questions.map(q => q.prompt).join(), [questions])
-  const [answers, setAnswers] = useState<string[]>(local?.answers ?? [])
-  const [submitted, setSubmitted] = useState(local?.submitted ?? false)
-  const [questionIndex, setQuestionIndex] = useState(local?.questionIndex ?? 0)
+  const [answers, setAnswers] = useState<string[]>([])
+  const [submitted, setSubmitted] = useState(false)
+  const [questionIndex, setQuestionIndex] = useState(0)
   // Sources whose first multiple-choice pick was wrong; they still count as missed for review.
   const [firstWrong, setFirstWrong] = useState<string[]>([])
   // Typed and written questions that have been checked in this session, and AI feedback on written answers.
   const [checked, setChecked] = useState<number[]>([])
   const [feedback, setFeedback] = useState<Record<number, string>>({})
   const resetSession = useCallback(() => { setSubmitted(false); setQuestionIndex(0); setFirstWrong([]); setChecked([]); setFeedback({}) }, [])
+  // Recall AI chats are kept only with an account. Signed out, a chat lasts until you leave it.
+  const [chats, setChats] = useState<SavedChat[]>([])
   const [savedToken] = useState(readToken)
   const [account, setAccount] = useState<Account | null>(null)
   const [restoring, setRestoring] = useState(!!savedToken)
   const [syncStatus, setSyncStatus] = useState('Not saved yet')
-  const progress = useMemo<SavedProgress>(() => ({ version: 1, notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays, theme, ...(blocker ? { blocker } : {}) }), [notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays, theme, blocker])
+  const progress = useMemo<SavedProgress>(() => ({ version: 1, notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays, theme, chats, ...(blocker ? { blocker } : {}) }), [notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays, theme, chats, blocker])
   const applyProgress = useCallback((saved: SavedProgress) => {
     setReview(saved.review ?? []); setAdaptive(saved.adaptive !== false); setNotes(saved.notes); setNoteName(saved.noteName); setCount(saved.count); setFormat(saved.format ?? 'blank');
     setQuestions(saved.questions); setAnswers(saved.answers); setSubmitted(saved.submitted)
     setQuestionIndex(saved.questionIndex); setStudyDays(saved.studyDays)
     if (saved.theme) setTheme(saved.theme)
     setBlocker(saved.blocker ?? null)
+    setChats(saved.chats ?? [])
   }, [])
   function authenticate(next: Account, saved: SavedProgress | null) {
     if (saved) applyProgress(saved)
@@ -301,7 +304,7 @@ function App() {
         </>}
       </>}
     </section>}
-    {shown === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={sessionKey} questions={questions} current={questionIndex} notes={notes} topics={topics} token={account?.token} />{questions.length > 0 && <div className="quiz-tools"><button className="text-button" onClick={() => navigate('Practice')}>Back to your quiz</button></div>}</section>}
+    {shown === 'Tutor' && <section className="content" aria-label="Recall AI"><HintCoach key={sessionKey} questions={questions} current={questionIndex} notes={notes} topics={topics} token={account?.token} chats={account ? chats : []} onChats={account ? setChats : undefined} onSignIn={() => navigate('Profile')} />{questions.length > 0 && <div className="quiz-tools"><button className="text-button" onClick={() => navigate('Practice')}>Back to your quiz</button></div>}</section>}
     </div>
   </main>
 }

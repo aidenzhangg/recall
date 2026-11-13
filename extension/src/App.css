@@ -178,6 +178,20 @@ progress::-moz-progress-bar { background: var(--accent); }
 .chat-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .chat-header p { display: flex; align-items: center; gap: 8px; margin-top: 3px; color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
 .chat-actions { display: flex; gap: 4px; }
+.chat-tabs { max-width: 280px; }
+.chat-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 6px; padding: 0 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 10.5px; font-weight: 600; }
+.chat-history { min-height: 220px; }
+.chat-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.chat-item { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); transition: border-color 160ms; }
+.chat-item:hover, .chat-item:focus-within { border-color: var(--line-strong); }
+.chat-item--open { border-color: var(--accent); }
+.chat-open { display: grid; flex: 1; gap: 3px; min-width: 0; padding: 11px 14px; border: 0; background: none; color: var(--ink); text-align: left; }
+.chat-open strong { overflow: hidden; font-size: 13.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.chat-open span { color: var(--muted); font-size: 11.5px; }
+.chat-delete { flex-shrink: 0; width: 36px; margin-right: 6px; padding: 0; }
+.chat-delete svg { width: 16px; height: 16px; }
+.chat-delete:hover:not(:disabled) { color: #e5484d; }
+.chat-unsaved { margin-top: -6px; text-align: center; }
 .model-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
 .model-dot--ready { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .coach-messages { display: grid; gap: 12px; align-content: start; min-height: 220px; max-height: 56dvh; padding: 4px 0; overflow-y: auto; overflow-wrap: anywhere; scrollbar-width: thin; }
