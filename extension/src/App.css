@@ -3,7 +3,7 @@
 .panel--gated { padding-bottom: 24px; }
 .masthead { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 58px; margin: 0 -14px; padding: 0 14px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter: blur(14px); }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand-mark, .chat-mark { display: grid; place-items: center; width: 30px; height: 30px; padding-bottom: 3px; border-radius: 10px; background: linear-gradient(150deg, var(--accent-strong), var(--accent)); color: var(--accent-ink); font: 600 22px/1 var(--font-display); box-shadow: var(--glow); }
+.brand-mark, .chat-mark { display: block; flex-shrink: 0; width: 32px; height: 32px; border-radius: 22%; box-shadow: 0 0 0 1px var(--line-strong); }
 .brand h1 { font: 600 19px/1.2 var(--font-display); letter-spacing: -.4px; }
 .header-controls { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .save-status { display: inline-flex; align-items: center; gap: 7px; max-width: 170px; min-height: 34px; margin-right: 4px; padding: 3px 12px 3px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 500; }
@@ -182,7 +182,7 @@ progress::-moz-progress-bar { background: var(--accent); }
 .model-dot--ready { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .coach-messages { display: grid; gap: 12px; align-content: start; min-height: 220px; max-height: 56dvh; padding: 4px 0; overflow-y: auto; overflow-wrap: anywhere; scrollbar-width: thin; }
 .chat-empty { padding: 30px 0; }
-.chat-mark { width: 52px; height: 52px; padding-bottom: 5px; border-radius: 17px; font-size: 34px; }
+.chat-mark { width: 56px; height: 56px; }
 .chat-empty h3 { font-size: 19px; }
 .coach-message { justify-self: start; max-width: 92%; padding: 11px 15px; border: 1px solid var(--line); border-radius: 18px 18px 18px 6px; background: var(--surface); font-size: 14px; line-height: 1.6; animation: rise 220ms ease both; }
 .coach-message strong { display: block; margin-bottom: 3px; color: var(--accent); font: 600 11px var(--font-display); }
@@ -306,8 +306,8 @@ button.flashcard:hover { border-color: var(--line-strong); transform: translateY
 .auth { display: grid; justify-items: center; padding-top: 4vh; animation: rise 260ms ease both; }
 .auth-card { display: grid; gap: 16px; width: 100%; max-width: 390px; padding: 30px 24px; border: 1px solid var(--line); border-radius: 24px; background: radial-gradient(340px 180px at 50% 0%, var(--accent-soft), transparent 70%), var(--surface); box-shadow: var(--shadow); }
 .profile-avatar { display: grid; place-items: center; background: linear-gradient(150deg, var(--accent-strong), var(--accent)); color: var(--accent-ink); font: 600 18px var(--font-display); }
-.auth-card > .profile-avatar, .auth-mark { justify-self: center; width: 56px; height: 56px; border-radius: 18px; font-size: 26px; box-shadow: var(--glow); }
-.auth-mark { padding-bottom: 5px; font-size: 38px; }
+.auth-card > .profile-avatar { justify-self: center; width: 56px; height: 56px; border-radius: 18px; font-size: 26px; box-shadow: var(--glow); }
+.auth-mark { justify-self: center; width: 60px; height: 60px; }
 .auth-heading { display: grid; gap: 4px; text-align: center; }
 .auth-heading h2 { font-size: 23px; overflow-wrap: anywhere; }
 .auth-heading p { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }

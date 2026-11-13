@@ -7,7 +7,7 @@ const cloud = config ? createCloud(config) : null
 export const CLOUD_ACCOUNTS = !!cloud
 export type User = { id: string; name: string; email: string }
 export type Account = { token: string; user: User }
-export type SavedProgress = { version: 1; notes: string; noteName: string; count: number; format?: QuizFormat; hintsOn: boolean; questions: Question[]; answers: string[]; submitted: boolean; questionIndex: number; studyDays: string[]; review?: ReviewItem[]; adaptive?: boolean }
+export type SavedProgress = { version: 1; notes: string; noteName: string; count: number; format?: QuizFormat; hintsOn: boolean; questions: Question[]; answers: string[]; submitted: boolean; questionIndex: number; studyDays: string[]; review?: ReviewItem[]; adaptive?: boolean; theme?: 'light' | 'dark'; blocker?: { enabled: boolean; domains: string[] } }
 export function parseProgress(raw: string): SavedProgress {
   const v = JSON.parse(raw)
   if (v?.version !== 1 || typeof v.notes !== 'string' || typeof v.noteName !== 'string' || typeof v.hintsOn !== 'boolean'
@@ -15,7 +15,10 @@ export function parseProgress(raw: string): SavedProgress {
     || !Array.isArray(v.answers) || !v.answers.every((a: unknown) => typeof a === 'string') || typeof v.submitted !== 'boolean'
     || !Array.isArray(v.studyDays) || !v.studyDays.every((d: unknown) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))) throw new Error('Saved progress could not be read. Your workspace has not been changed.')
   const review: ReviewItem[] = Array.isArray(v.review) ? v.review.filter((item: ReviewItem) => item && typeof item.source === 'string' && item.source.length <= 20000 && typeof item.topic === 'string' && item.topic.length <= 4000 && Number.isInteger(item.misses) && item.misses >= 0 && Number.isInteger(item.successes) && item.successes >= 0 && Number.isFinite(item.dueAt)).slice(-250) : []
-  return { review, adaptive: v.adaptive !== false, version: 1, notes: v.notes, noteName: v.noteName, count: [5,10,15].includes(v.count) ? v.count : 5, hintsOn: v.hintsOn, format: ['blank','choice','long','mixed'].includes(v.format) ? v.format : 'blank', questions: v.questions.map((q: Question) => {
+  // Preferences travel with the account too: the theme and the blocked-sites list.
+  const theme = v.theme === 'light' || v.theme === 'dark' ? { theme: v.theme as 'light' | 'dark' } : {}
+  const blocker = v.blocker && Array.isArray(v.blocker.domains) ? { blocker: { enabled: v.blocker.enabled === true, domains: [...new Set<string>(v.blocker.domains.filter((d: unknown) => typeof d === 'string' && d.length <= 253 && /^[a-z0-9.-]+$/.test(d)))].slice(0, 100) } } : {}
+  return { ...theme, ...blocker, review, adaptive: v.adaptive !== false, version: 1, notes: v.notes, noteName: v.noteName, count: [5,10,15].includes(v.count) ? v.count : 5, hintsOn: v.hintsOn, format: ['blank','choice','long','mixed'].includes(v.format) ? v.format : 'blank', questions: v.questions.map((q: Question) => {
       const kind = q.kind ?? 'blank'
       if (!['blank','choice','long'].includes(kind) || (kind === 'choice' && (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 4 || !q.options.every(option => typeof option === 'string') || new Set(q.options).size !== q.options.length || !q.options.includes(q.answer)))) throw new Error('Invalid saved question')
       return { prompt: q.prompt, answer: q.answer, kind, ...(typeof q.source === 'string' ? { source: q.source } : {}), ...(typeof q.topic === 'string' ? { topic: q.topic } : {}), ...(typeof q.explanation === 'string' ? { explanation: q.explanation.slice(0, 800) } : {}), ...(kind === 'choice' ? { options: q.options } : {}) }
@@ -28,7 +31,7 @@ const WORKSPACE = 'recall-workspace'
 export function readLocalWorkspace(): SavedProgress | null {
   try { const raw = localStorage.getItem(WORKSPACE); return raw ? parseProgress(raw) : null } catch { return null }
 }
-export function clearLocalWorkspace() { try { localStorage.removeItem(WORKSPACE); localStorage.removeItem('recall-study-days') } catch { /* Nothing to clear. */ } }
+export function clearLocalWorkspace() { try { localStorage.removeItem(WORKSPACE); localStorage.removeItem('recall-study-days'); localStorage.removeItem('recall-theme') } catch { /* Nothing to clear. */ } }
 export function readToken(): string | null { if (cloud) return cloud.signedIn() ? 'cloud' : null; try { return sessionStorage.getItem('recall-session') } catch { return null } }
 export function rememberToken(token: string | null) { if (cloud) return; try { if (token) sessionStorage.setItem('recall-session', token); else sessionStorage.removeItem('recall-session') } catch { /* Session stays in memory. */ } }
 export async function accountRequest(path: string, body?: unknown, token?: string, signal?: AbortSignal) {

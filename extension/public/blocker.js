@@ -28,31 +28,28 @@ function storedState(value) {
   return { enabled: value?.enabled === true, domains };
 }
 
+// The list of sites belongs to the signed-in account and is sent here by the panel. Nothing is kept in
+// extension storage: the only thing in the browser is Chrome's own set of active blocking rules.
 export function createBlocker(api) {
   let queue = Promise.resolve();
   const serial = operation => { const next = queue.then(operation); queue = next.catch(() => {}); return next; };
-  const read = async () => storedState((await api.storage.local.get(BLOCKER_KEY))[BLOCKER_KEY]);
-  async function apply(state) {
-    const current = await api.declarativeNetRequest.getDynamicRules();
-    const removeRuleIds = current.filter(rule => rule.id >= FIRST_RULE && rule.id < FIRST_RULE + MAX_DOMAINS).map(rule => rule.id);
-    await api.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules: buildBlockRules(state) });
+  const ours = rule => rule.id >= FIRST_RULE && rule.id < FIRST_RULE + MAX_DOMAINS;
+  async function live() {
+    const rules = (await api.declarativeNetRequest.getDynamicRules()).filter(ours);
+    return storedState({ enabled: rules.length > 0, domains: rules.flatMap(rule => rule.condition?.requestDomains ?? []) });
+  }
+  // A list an earlier version saved on this device. It is handed to the panel once so it can move into the account.
+  async function legacy() {
+    try { const value = (await api.storage.local.get(BLOCKER_KEY))[BLOCKER_KEY]; return value ? storedState(value) : null; }
+    catch { return null; }
   }
   return {
-    restore: () => serial(async () => { const state = await read(); await apply(state); return state; }),
-    get: () => serial(read),
-    update: message => serial(async () => {
-      const previous = await read(); const next = { enabled: previous.enabled, domains: [...previous.domains] };
-      if (message.action === 'toggle' && typeof message.enabled === 'boolean') next.enabled = message.enabled;
-      else if (message.action === 'add') {
-        const domain = normalizeDomain(message.domain);
-        if (next.domains.includes(domain)) throw new Error('That website is already in your list.');
-        if (next.domains.length >= MAX_DOMAINS) throw new Error('Remove a website before adding another. The limit is 100.');
-        next.domains.push(domain);
-      } else if (message.action === 'remove') next.domains = next.domains.filter(domain => domain !== normalizeDomain(message.domain));
-      else throw new Error('Invalid blocker action.');
-      await apply(next);
-      try { await api.storage.local.set({ [BLOCKER_KEY]: next }); }
-      catch { await apply(previous); throw new Error('Could not save blocking settings. Try again.'); }
+    get: () => serial(async () => (await legacy()) ?? live()),
+    set: state => serial(async () => {
+      const next = storedState(state);
+      const current = (await api.declarativeNetRequest.getDynamicRules()).filter(ours);
+      await api.declarativeNetRequest.updateDynamicRules({ removeRuleIds: current.map(rule => rule.id), addRules: buildBlockRules(next) });
+      try { await api.storage.local.remove(BLOCKER_KEY); } catch { /* Nothing left on the device to remove. */ }
       return next;
     }),
   };
@@ -60,14 +57,10 @@ export function createBlocker(api) {
 
 export function installBlocker(api) {
   const blocker = createBlocker(api);
-  const restore = () => { void blocker.restore().catch(() => console.error('Recall could not restore website blocking. Reload the extension.')); };
-  api.runtime.onInstalled.addListener(restore);
-  api.runtime.onStartup.addListener(restore);
   api.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== api.runtime.id || message?.type !== 'recall.blocker') return false;
-    const operation = message.action === 'get' ? blocker.get() : blocker.update(message);
+    const operation = message.action === 'get' ? blocker.get() : message.action === 'set' ? blocker.set(message.state) : Promise.reject(new Error('Invalid blocker action.'));
     operation.then(state => respond({ ok: true, state })).catch(() => respond({ ok: false, error: 'Could not update website blocking. Reload Recall and try again.' }));
     return true;
   });
-  restore();
 }

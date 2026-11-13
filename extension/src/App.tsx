@@ -8,9 +8,12 @@ import FocusTimer from './FocusTimer'
 import Profile from './Profile'
 import Connect from './Connect'
 import WebsiteBlocker from './WebsiteBlocker'
+import { blockerRequest } from './blockerClient'
+import type { BlockerState } from '../public/blocker.js'
 import { appendMaterial } from './material'
 import Flashcards from './Flashcards'
 import PredictionPaper from './PredictionPaper'
+import Logo from './Logo'
 import { accountRequest, clearLocalWorkspace, CLOUD_ACCOUNTS, parseProgress, readLocalWorkspace, readToken, rememberToken, saveProgress } from './account'
 import type { Account, SavedProgress } from './account'
 import { dateKey, recentDays, streakLength } from './activity'
@@ -37,14 +40,11 @@ function App() {
   const [importReport, setImportReport] = useState<{ name: string; pages: number; warnings: string[] } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [tab, setTab] = useState<Tab>('Tutor')
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    try { return localStorage.getItem('recall-theme') === 'light' ? 'light' : 'dark' }
-    catch { return 'dark' }
-  })
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    try { localStorage.setItem('recall-theme', theme) } catch { /* Theme still works if storage is unavailable. */ }
-  }, [theme])
+  // The theme and the blocked-sites list are saved with the account, never on this device.
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark')
+  useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
+  // null until it is known: it comes from the account, or from Chrome's live rules when the account has none yet.
+  const [blocker, setBlocker] = useState<BlockerState | null>(null)
   // Recall always guides with hints; there is no mode that hands out answers while you are working.
   const hintsOn = true
   const [notes, setNotes] = useState(local?.notes ?? '')
@@ -73,11 +73,13 @@ function App() {
   const [account, setAccount] = useState<Account | null>(null)
   const [restoring, setRestoring] = useState(!!savedToken)
   const [syncStatus, setSyncStatus] = useState('Not saved yet')
-  const progress = useMemo<SavedProgress>(() => ({ version: 1, notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays }), [notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays])
+  const progress = useMemo<SavedProgress>(() => ({ version: 1, notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays, theme, ...(blocker ? { blocker } : {}) }), [notes, noteName, count, format, review, adaptive, hintsOn, questions, answers, submitted, questionIndex, studyDays, theme, blocker])
   const applyProgress = useCallback((saved: SavedProgress) => {
     setReview(saved.review ?? []); setAdaptive(saved.adaptive !== false); setNotes(saved.notes); setNoteName(saved.noteName); setCount(saved.count); setFormat(saved.format ?? 'blank');
     setQuestions(saved.questions); setAnswers(saved.answers); setSubmitted(saved.submitted)
     setQuestionIndex(saved.questionIndex); setStudyDays(saved.studyDays)
+    if (saved.theme) setTheme(saved.theme)
+    setBlocker(saved.blocker ?? null)
   }, [])
   function authenticate(next: Account, saved: SavedProgress | null) {
     if (saved) applyProgress(saved)
@@ -110,6 +112,15 @@ function App() {
     }, 800)
     return () => { window.clearTimeout(timer); abort.abort() }
   }, [account, progress])
+  // Chrome's rules always mirror the account's list, so signing in applies it and signing out clears it.
+  useEffect(() => {
+    if (restoring) return
+    let active = true
+    if (blocker) void blockerRequest({ action: 'set', state: blocker }).catch(() => {})
+    else void blockerRequest({ action: 'get' }).catch(() => ({ enabled: false, domains: [] })).then(state => { if (active) setBlocker(state) })
+    return () => { active = false }
+  }, [blocker, restoring])
+  const blockForFocus = useCallback(() => setBlocker(previous => previous && !previous.enabled ? { ...previous, enabled: true } : previous), [])
   async function saveNow() {
     if (!account) return
     setSyncStatus('Saving progress')
@@ -126,7 +137,7 @@ function App() {
     await saveNow()
     await accountRequest('logout', {}, account.token)
     rememberToken(null); setAccount(null)
-    applyProgress({ version: 1, notes: '', noteName: 'Pasted notes', count: 5, hintsOn: true, questions: [], answers: [], submitted: false, questionIndex: 0, studyDays: [] })
+    applyProgress({ version: 1, notes: '', noteName: 'Pasted notes', count: 5, hintsOn: true, questions: [], answers: [], submitted: false, questionIndex: 0, studyDays: [], blocker: { enabled: false, domains: [] } })
     setSyncStatus('Signed out')
   }
   function editNotes(text: string) {
@@ -234,7 +245,7 @@ function App() {
   const weak = useMemo(() => review.filter(item => item.misses > item.successes).sort((a, b) => (b.misses - b.successes) - (a.misses - a.successes)).slice(0, 4), [review])
   const topics = useMemo(() => [...new Set(makeQuestions(notes, 4, 'long').map(q => q.topic ?? ''))].filter(Boolean), [notes])
   return <main className={gated ? 'panel panel--gated' : 'panel'}>
-    <header className="masthead"><div className="brand"><span className="brand-mark" aria-hidden="true">r</span><h1>Recall</h1></div><div className="header-controls">{!gated && <button className="save-status" onClick={() => navigate('Profile')}>{account && <span className="save-avatar" aria-hidden="true">{account.user.name.slice(0, 1).toUpperCase()}</span>}{account ? account.user.name.split(' ')[0] : 'Sign in to save'}</button>}<button type="button" className="expand-button" title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{theme === 'dark' ? <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></> : <path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" />}</svg></button><button className="expand-button" onClick={openWorkspace} aria-label="Open Recall in a new tab" title="Open in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></button></div></header>
+    <header className="masthead"><div className="brand"><Logo className="brand-mark" /><h1>Recall</h1></div><div className="header-controls">{!gated && <button className="save-status" onClick={() => navigate('Profile')}>{account && <span className="save-avatar" aria-hidden="true">{account.user.name.slice(0, 1).toUpperCase()}</span>}{account ? account.user.name.split(' ')[0] : 'Sign in'}</button>}<button type="button" className="expand-button" title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{theme === 'dark' ? <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></> : <path d="M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14Z" />}</svg></button><button className="expand-button" onClick={openWorkspace} aria-label="Open Recall in a new tab" title="Open in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></button></div></header>
 
     {!gated && <nav className="tabs" aria-label="Study workspace">{(['Tutor', 'Dashboard', 'Notes', 'Practice', 'Cards', 'Focus', 'Block'] as Tab[]).map(name => <button key={name} title={name === 'Tutor' ? 'Recall AI' : name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name} className={`tab${shown === name ? ' active' : ''}`} aria-current={shown === name ? 'page' : undefined} onClick={() => navigate(name)}><NavIcon name={name} /><span className="tab-label">{name === 'Cards' ? 'Flashcards' : name === 'Block' ? 'Block sites' : name === 'Tutor' ? 'Recall AI' : name}</span></button>)}</nav>}
     <input ref={inputRef} type="file" className="visually-hidden" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" aria-label="Upload course notes" tabIndex={-1} onChange={e => void handleFile(e)} />
@@ -254,11 +265,11 @@ function App() {
       {weak.length > 0 && <section className="card weak-topics" aria-labelledby="weak-title"><div className="card-heading"><h3 id="weak-title">Needs practice</h3><span>from your missed answers</span></div><ul>{weak.map(item => <li key={item.source}><div><strong>{item.topic}</strong><span>Missed {item.misses}x{item.successes ? `, correct ${item.successes}x` : ''}</span></div><div className="chips" aria-label={`Look up ${item.topic}`}>{resourceLinks(item.topic).slice(0, 3).map(link => <a key={link.label} className="chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>)}</div></li>)}</ul><button className="primary" disabled={generating || !notes.trim()} onClick={() => void generate(true)}>{generating ? 'Preparing...' : 'Practice weak topics'}</button></section>}
       <section className="card activity-summary" aria-label="Study activity"><div className="card-heading"><h3>This week</h3><span className="streak-badge">{streakLength(studyDays)}-day streak</span></div><div className="streak-days" aria-label="Study activity over the last seven days">{recentDays().map(day => <span key={day} className={studyDays.includes(day) ? 'streak-day active' : 'streak-day'} title={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`} aria-label={`${day}: ${studyDays.includes(day) ? 'Studied' : 'No activity'}`}><small aria-hidden="true">{new Date(`${day}T12:00`).toLocaleDateString(undefined, { weekday: 'narrow' })}</small>{Number(day.slice(-2))}</span>)}</div></section>
     </section>}
-    {shown === 'Block' && <WebsiteBlocker locked={focusLocked} />}
+    {shown === 'Block' && <WebsiteBlocker state={blocker ?? { enabled: false, domains: [] }} onChange={setBlocker} locked={focusLocked} signedIn={!!account} />}
     {shown === 'Connect' && <Connect key={account?.user.id ?? 'guest'} account={account} onSignIn={() => navigate('Profile')} onImport={text => { setNotes(appendMaterial(notes, text)); setNoteName('Imported material'); navigate('Notes') }} />}
     {shown === 'Cards' && <Flashcards key={notes} notes={notes} onNotes={() => navigate('Notes')} />}
     {shown === 'Profile' && <Profile required={CLOUD_ACCOUNTS} account={account} syncStatus={syncStatus} onAuthenticated={authenticate} onSave={saveNow} onSignOut={signOut} />}
-    <div hidden={shown !== 'Focus'}><FocusTimer key={account?.user.id ?? 'guest'} onComplete={recordStudyDay} onSession={setFocusLocked} /></div>
+    <div hidden={shown !== 'Focus'}><FocusTimer key={account?.user.id ?? 'guest'} onComplete={recordStudyDay} onSession={setFocusLocked} onBlock={blockForFocus} /></div>
     {shown === 'Notes' && <section className="content" aria-labelledby="notes-title">
       <div className="page-heading"><h2 id="notes-title">Notes</h2></div>
       <div className="material-panel"><div className="material-heading"><NavIcon name="Notes" /><div><strong>{words ? noteName : 'Add course notes'}</strong><p>PDF, TXT or Markdown, up to 20 MB</p></div></div><button className="secondary" disabled={importing} onClick={() => inputRef.current?.click()}>{importing ? 'Importing...' : words ? 'Replace material' : 'Import material'}</button></div>

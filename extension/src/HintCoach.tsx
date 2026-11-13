@@ -10,6 +10,7 @@ import { currentEngine } from './ai'
 import type { Engine } from './ai'
 import { chat } from './aiStudy'
 import type { ChatTurn } from './aiStudy'
+import Logo from './Logo'
 
 type Message = { role: 'Recall' | 'You'; text: string; sources?: string[]; resources?: Resource[]; note?: string; lookup?: boolean; hint?: boolean }
 type Props = { questions: Question[]; current: number; notes: string; topics: string[]; token?: string }
@@ -90,7 +91,7 @@ export default function HintCoach({ questions, current, notes, topics, token }: 
     {questions.length > 0 && <label className="coach-label" htmlFor="hint-question">Talking about<select id="hint-question" value={selected} onChange={e => setSelected(Number(e.target.value))}><option value={-1}>My notes in general</option>{questions.map((_, i) => <option key={i} value={i}>Quiz question {i + 1}{i === current ? ' (current)' : ''}</option>)}</select></label>}
     {question && <p className="coach-context">{question.prompt}</p>}
     <div className="coach-messages" role="log" aria-label="Recall AI conversation" aria-live="polite">
-      {!history.length && <div className="chat-empty"><span className="chat-mark" aria-hidden="true">r</span>
+      {!history.length && <div className="chat-empty"><Logo className="chat-mark" />
         {smart || !ready ? <h3>{question ? 'Stuck? Ask for a hint' : passages.length ? 'Ask anything about your notes' : 'What do you want to learn?'}</h3>
         : <><h3>AI is not set up yet</h3><p>Until it is, I can find the matching lines in your notes and give basic hints.</p>
           {device === 'downloadable' && <button type="button" className="secondary" onClick={() => void enableDevice()}>Turn on Chrome's built-in AI</button>}

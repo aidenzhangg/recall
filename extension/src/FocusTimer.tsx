@@ -3,12 +3,8 @@ import FocusGuard from './FocusGuard'
 import { GAZE_LABEL } from './gaze'
 import type { GazeState } from './gaze'
 
-/** Turns site blocking on for the session. It is best-effort: outside the installed extension there is nothing to switch. */
-function blockSites() {
-  if (typeof chrome === 'undefined' || !chrome.runtime?.id) return
-  void chrome.runtime.sendMessage({ type: 'recall.blocker', action: 'toggle', enabled: true }).catch(() => {})
-}
-export default function FocusTimer({ onComplete, onSession }: { onComplete: () => void; onSession: (active: boolean) => void }) {
+/** onBlock turns site blocking on for the session; the list itself belongs to the account. */
+export default function FocusTimer({ onComplete, onSession, onBlock }: { onComplete: () => void; onSession: (active: boolean) => void; onBlock: () => void }) {
   const [minutes, setMinutes] = useState(25)
   const [remaining, setRemaining] = useState(25 * 60)
   const [running, setRunning] = useState(false)
@@ -29,7 +25,7 @@ export default function FocusTimer({ onComplete, onSession }: { onComplete: () =
   function start() {
     const seconds = remaining > 0 ? remaining : minutes * 60
     deadline.current = Date.now() + seconds * 1000
-    setRemaining(seconds); setFinished(false); setRunning(true); blockSites()
+    setRemaining(seconds); setFinished(false); setRunning(true); onBlock()
   }
   const pause = useCallback(() => {
     setRemaining(Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000)))

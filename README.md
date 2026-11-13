@@ -18,7 +18,7 @@ Recall runs entirely inside Chrome, with no server of its own. Study data (notes
 - **Focus lock.** Starting the focus timer turns site blocking on and locks it: until the session finishes or you end it, sites cannot be removed and blocking cannot be turned off. Pages that were already open stay open until they are reloaded.
 - **Past papers.** Numbered questions found in an imported paper, one at a time, with self-review (papers carry no answer key).
 - **Flashcards and focus timer.** Flip, Got it / Still learning, a missed-card round, and a 15 to 60 minute timer.
-- **Accounts.** Sign in with email and password (or Google) to save everything to your account. Without an account nothing is saved.
+- **Accounts.** Sign in with email and password (or Google) to save everything to your account: notes, progress, the light or dark theme and your blocked-sites list. Nothing is saved to the device, and without an account nothing is saved at all.
 - **Recall Connect (needs the backend).** Pair a phone with a QR code, send a photo from its browser, then review and import the text on the desktop.
 
 The interface is a dark or light side-panel workspace set in Outfit and IBM Plex Sans.
@@ -187,7 +187,7 @@ Recall is a student project, provided as is with no warranty. Read this before p
 - **Camera.** Frames are processed in memory on your computer to get face landmarks and are then discarded. No image, video or face data is saved, uploaded, or used to identify anyone. The only request made is the one-time download of the model file from Google. Turning the switch off stops the camera.
 - **The AI key** belongs to whoever built the extension and is readable inside the build. Users do not enter one.
 - **Accounts (optional backend).** Email, name, a salted PBKDF2 password hash and your progress snapshot are stored on whichever backend and database you or the host configure. Whoever runs that backend can read the stored notes. This application does not encrypt data at rest.
-- **Site blocker** rules stay in the browser; no browsing history is recorded or sent.
+- **Site blocker.** The list of sites is saved to your account, not the device. While blocking is on, Chrome holds the active rules; signing out clears them. No browsing history is recorded or sent.
 - **Accuracy.** AI answers, hints, marks and generated questions can be wrong. The attention percentage is an estimate of where your face points, not a measure of focus. Do not rely on either for grades, assessment or anything medical.
 - Recall collects no analytics and has no server of its own. It is not affiliated with Google, Groq, OpenRouter, OpenAI, Supabase or AWS.
 
@@ -222,4 +222,4 @@ Shared React state, async cancellation, runtime validation, Java request validat
 The earlier layout was inspired by [Aspira](https://wabtech.gumroad.com/l/aspira). The current interface is a compact desktop-utility interpretation with project-specific components and interactions.
 
 ### Website blocking
-After installing or updating, reload Recall at chrome://extensions and approve the added storage/request-blocking permissions if Chrome asks. Open **Block sites**, add a domain (for example, youtube.com), then turn **Blocking on**. Remove entries or turn blocking off to allow them again. Rules persist across browser restarts and apply to new page loads in this Chrome profile; they do not close existing tabs, block other browsers or restrict Chrome internal pages. Chrome displays its native blocked-request page. The list is local to the device, not tied to an account or sent to the server. You can save up to 100 domains. URL paths and query strings are stripped; local addresses and IP addresses are rejected. This is a voluntary study aid, not tamper-proof parental control.
+After installing or updating, reload Recall at chrome://extensions and approve the added storage/request-blocking permissions if Chrome asks. Open **Block sites**, add a domain (for example, youtube.com), then turn **Blocking on**. Remove entries or turn blocking off to allow them again. Rules persist across browser restarts and apply to new page loads in this Chrome profile; they do not close existing tabs, block other browsers or restrict Chrome internal pages. Chrome displays its native blocked-request page. The list is saved to your account, not the device; signing in applies it and signing out clears the rules. You can save up to 100 domains. URL paths and query strings are stripped; local addresses and IP addresses are rejected. This is a voluntary study aid, not tamper-proof parental control.

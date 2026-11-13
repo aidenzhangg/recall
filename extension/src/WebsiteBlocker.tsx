@@ -1,20 +1,11 @@
 import { useEffect, useState } from 'react'
-import { BLOCKER_KEY, MAX_DOMAINS, normalizeDomain } from '../public/blocker.js'
+import { MAX_DOMAINS, normalizeDomain } from '../public/blocker.js'
 import type { BlockerState } from '../public/blocker.js'
+import { blockerRequest } from './blockerClient'
 
-type Action = { action: 'get' } | { action: 'toggle'; enabled: boolean } | { action: 'add' | 'remove'; domain: string }
-async function request(action: Action): Promise<BlockerState> {
-  if (typeof chrome === 'undefined' || !chrome.runtime?.id) throw new Error('Website blocking works in the installed Chrome extension. Build and reload Recall to use it.')
-  const manifest = chrome.runtime.getManifest()
-  if (!manifest.background || !('service_worker' in manifest.background) || manifest.background.type !== 'module' || !manifest.permissions?.includes('declarativeNetRequest')) throw new Error('Recall needs an extension reload to activate website blocking.')
-  let result
-  try { result = await chrome.runtime.sendMessage({ type: 'recall.blocker', ...action }) }
-  catch { throw new Error('Cannot reach the blocker. Reload Recall at chrome://extensions and reopen the panel.') }
-  if (!result?.ok || typeof result.state?.enabled !== 'boolean' || !Array.isArray(result.state?.domains)) throw new Error('Could not update blocking. Check that Recall has its new permissions and reload it.')
-  return result.state
-}
-export default function WebsiteBlocker({ locked = false }: { locked?: boolean }) {
-  const [state, setState] = useState<BlockerState>({ enabled: false, domains: [] })
+type Props = { state: BlockerState; onChange: (next: BlockerState) => void; locked?: boolean; signedIn: boolean }
+/** The list is part of the account's saved progress; this screen edits it and applies it to Chrome. */
+export default function WebsiteBlocker({ state, onChange, locked = false, signedIn }: Props) {
   const [domain, setDomain] = useState('')
   const [busy, setBusy] = useState(true)
   const [connected, setConnected] = useState(false)
@@ -22,17 +13,18 @@ export default function WebsiteBlocker({ locked = false }: { locked?: boolean })
   const [notice, setNotice] = useState('')
   useEffect(() => {
     let active = true
-    const refresh = () => { void request({ action: 'get' }).then(value => { if (active) { setState(value); setConnected(true); setError('') } }).catch(e => { if (active) { setConnected(false); setError(e instanceof Error ? e.message : 'Could not load settings.') } }).finally(() => { if (active) setBusy(false) }) }
-    const changed = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => { if (area === 'local' && changes[BLOCKER_KEY]) refresh() }
-    refresh()
-    if (typeof chrome !== 'undefined' && chrome.storage) chrome.storage.onChanged.addListener(changed)
-    return () => { active = false; if (typeof chrome !== 'undefined' && chrome.storage) chrome.storage.onChanged.removeListener(changed) }
+    void blockerRequest({ action: 'get' }).then(() => { if (active) { setConnected(true); setError('') } }).catch(e => { if (active) { setConnected(false); setError(e instanceof Error ? e.message : 'Could not load settings.') } }).finally(() => { if (active) setBusy(false) })
+    return () => { active = false }
   }, [])
+  type Action = { action: 'toggle'; enabled: boolean } | { action: 'add' | 'remove'; domain: string }
   async function update(action: Action) {
     if (busy) return
+    const next: BlockerState = action.action === 'toggle' ? { ...state, enabled: action.enabled }
+      : action.action === 'add' ? { ...state, domains: [...state.domains, action.domain] }
+      : { ...state, domains: state.domains.filter(site => site !== action.domain) }
     setBusy(true); setError(''); setNotice('')
-    try { setState(await request(action)); if (action.action === 'add') setDomain(''); setNotice('Blocking settings saved.') }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not save blocking settings.') }
+    try { onChange(await blockerRequest({ action: 'set', state: next })); if (action.action === 'add') setDomain(''); setNotice(signedIn ? 'Blocking settings saved to your account.' : 'Blocking updated.') }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not update blocking.') }
     finally { setBusy(false) }
   }
   const count = state.domains.length
@@ -43,6 +35,7 @@ export default function WebsiteBlocker({ locked = false }: { locked?: boolean })
       <div><strong>{!connected ? 'Blocker unavailable' : state.enabled ? 'Blocking is on' : 'Blocking is off'}</strong><span>{!connected ? 'Works in the installed extension' : state.enabled ? `${count} site${count === 1 ? '' : 's'} blocked right now` : count ? 'Turn it on when you start studying' : 'Add a site below to get started'}</span></div>
       <label className="switch"><span className="visually-hidden">Blocking</span><input type="checkbox" role="switch" checked={state.enabled} disabled={busy || !connected || locked} onChange={e => void update({ action: 'toggle', enabled: e.target.checked })} /></label>
     </div>
+    {!signedIn && connected && <p className="muted">Sign in to keep this list. Without an account it is gone when you close Recall.</p>}
     {locked && <p className="lock-note" role="status">Locked during your focus session. You can add sites, but not remove them or turn blocking off until it ends.</p>}
     <form className="blocked-site-form" onSubmit={e => { e.preventDefault(); try { const value = normalizeDomain(domain); if (state.domains.includes(value)) { setError('That website is already in your list.'); return } void update({ action: 'add', domain: value }) } catch (failure) { setError(failure instanceof Error ? failure.message : 'Enter a valid domain.') } }}><label className="visually-hidden" htmlFor="blocked-domain">Website to block</label><input id="blocked-domain" type="text" inputMode="url" autoComplete="off" spellCheck={false} maxLength={2048} value={domain} onChange={e => setDomain(e.target.value)} placeholder="Type a website, like youtube.com" /><button className="primary" disabled={busy || !connected || !domain.trim() || count >= MAX_DOMAINS}>Block</button></form>
     {suggestions.length > 0 && <div className="chips" aria-label="Common distractions"><span>Quick add</span>{suggestions.map(site => <button key={site} type="button" className="chip" disabled={busy || !connected || count >= MAX_DOMAINS} onClick={() => void update({ action: 'add', domain: site })}>+ {site}</button>)}</div>}

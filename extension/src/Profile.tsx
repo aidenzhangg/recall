@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { accountRequest, googleSignIn, parseProgress } from './account'
 import type { Account, SavedProgress } from './account'
+import Logo from './Logo'
 
 type Props = { required?: boolean; account: Account | null; syncStatus: string; onAuthenticated: (account: Account, progress: SavedProgress | null) => void; onSave: () => Promise<void>; onSignOut: () => Promise<void> }
 export default function Profile({ required = false, account, syncStatus, onAuthenticated, onSave, onSignOut }: Props) {
@@ -40,7 +41,7 @@ export default function Profile({ required = false, account, syncStatus, onAuthe
       <button className="secondary" disabled={busy} onClick={() => void action(onSignOut)}>Sign out</button>
       {error && <p className="error" role="alert">{error}</p>}
     </div> : <div className="auth-card">
-      <span className="brand-mark auth-mark" aria-hidden="true">r</span>
+      <Logo className="brand-mark auth-mark" />
       <div className="auth-heading"><h2 id="profile-title">{create ? 'Create your account' : 'Welcome back'}</h2><p>{create ? 'Keep your notes and progress on every computer.' : required ? 'Sign in to open your notes and progress.' : 'Sign in to sync your notes and progress.'}</p></div>
       <button type="button" className="secondary google-button" disabled={busy} onClick={() => void withGoogle()}><span className="google-mark" aria-hidden="true">G</span>Continue with Google</button>
       <div className="auth-divider" role="separator"><span>or</span></div>
