@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { classify, FocusTracker, GAZE_LABEL, signals } from './gaze'
+import { classify, FocusTracker, GAZE_LABEL, GazeCalibrator, signals } from './gaze'
 import type { FocusSnapshot, GazeState, Point } from './gaze'
 
 // Google's published face-landmark model. It is fetched once by the browser; camera frames are processed on this device.
@@ -8,6 +8,8 @@ const IDLE: FocusSnapshot = { state: 'none', score: 100, awaySeconds: 0, observe
 const TIMEOUTS = [[15, '15s'], [30, '30s'], [60, '1 min'], [120, '2 min']] as const
 // The pause warning appears once you have been away this long.
 const WARN_AFTER = 3
+// If no new camera frame arrives for this long, or frames keep failing, the camera is restarted.
+const STALL_MS = 4000, MAX_FAILURES = 10, MAX_RESTARTS = 3, RESTART_WINDOW_MS = 60000
 type Edge = { start: number; end: number }
 type Landmarker = {
   detectForVideo(video: HTMLVideoElement, time: number): { faceLandmarks: Point[][]; faceBlendshapes?: { categories: { categoryName: string; score: number }[] }[] }
@@ -45,7 +47,12 @@ function drawFace(canvas: HTMLCanvasElement, video: HTMLVideoElement, face: Poin
 type Props = { running: boolean; onAway: () => void; onBack: () => void; onGaze: (state: GazeState | null) => void }
 export default function FocusGuard({ running, onAway, onBack, onGaze }: Props) {
   const [on, setOn] = useState(false)
-  const [status, setStatus] = useState<'off' | 'starting' | 'live'>('off')
+  const [status, setStatus] = useState<'off' | 'starting' | 'live' | 'reconnecting'>('off')
+  // Bumped to tear the camera down and start it again after a stall.
+  const [attempt, setAttempt] = useState(0)
+  const restarts = useRef<number[]>([])
+  const calibrator = useRef(new GazeCalibrator())
+  const [learning, setLearning] = useState(false)
   const [error, setError] = useState('')
   const [snapshot, setSnapshot] = useState(IDLE)
   const [timeout, setAwayTimeout] = useState(30)
@@ -77,27 +84,54 @@ export default function FocusGuard({ running, onAway, onBack, onGaze }: Props) {
     let stream: MediaStream | undefined
     let interval = 0
     let landmarker: Landmarker | undefined
+    const element = video.current
+    const fresh = attempt === 0
+    let restarting = false
+    // Restart the camera, unless it has already failed several times in the last minute.
+    const recover = () => {
+      if (stopped) return
+      const now = Date.now()
+      restarts.current = [...restarts.current.filter(time => now - time < RESTART_WINDOW_MS), now]
+      if (restarts.current.length > MAX_RESTARTS) { setError('The camera keeps stopping. Check that no other app is using it, then turn camera focus off and on.'); setOn(false); return }
+      stopped = true; restarting = true
+      setAttempt(value => value + 1)
+    }
     const start = async () => {
-      setStatus('starting'); setError('')
+      setStatus(fresh ? 'starting' : 'reconnecting'); setError('')
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: 'user' }, audio: false })
-        if (stopped || !video.current) return
-        video.current.srcObject = stream
-        await video.current.play()
+        if (stopped || !element) return
+        // Unplugging the camera, sleep, or another app taking it ends the track. Start again rather than freeze.
+        stream.getVideoTracks().forEach(track => { track.onended = recover })
+        element.srcObject = stream
+        await element.play()
         const vision = await import('@mediapipe/tasks-vision')
         const files = await vision.FilesetResolver.forVisionTasks(new URL('./mediapipe', location.href).href)
         landmarker = await vision.FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL }, runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true })
         if (stopped) return
         const edges: Edge[] = [...vision.FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, ...vision.FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, ...vision.FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE]
-        tracker.current.reset(); setStatus('live')
+        if (fresh) { tracker.current.reset(); calibrator.current.reset() }
+        setStatus('live')
+        let failures = 0, lastFrame = -1, lastFrameAt = performance.now()
         interval = window.setInterval(() => {
-          if (!video.current || video.current.readyState < 2 || !landmarker) return
-          const result = landmarker.detectForVideo(video.current, performance.now())
+          const view = element
+          if (!landmarker) return
+          // A hidden panel is throttled by Chrome. Skip; the tracker does not count the gap either way.
+          if (document.visibilityState === 'hidden') { lastFrameAt = performance.now(); return }
+          if (view.paused) void view.play().catch(() => {})
+          if (view.currentTime !== lastFrame) { lastFrame = view.currentTime; lastFrameAt = performance.now() }
+          else if (performance.now() - lastFrameAt > STALL_MS) { recover(); return }
+          if (view.readyState < 2) return
+          let result: ReturnType<Landmarker['detectForVideo']>
+          try { result = landmarker.detectForVideo(view, performance.now()); failures = 0 }
+          catch { if (++failures >= MAX_FAILURES) recover(); return }
           const face = result.faceLandmarks[0]
           const shapes = Object.fromEntries((result.faceBlendshapes?.[0]?.categories ?? []).map(shape => [shape.categoryName, shape.score]))
-          const next = tracker.current.update(classify(face ? signals(face, shapes) : null), performance.now())
+          const read = calibrator.current.read(face ? signals(face, shapes) : null)
+          const next = tracker.current.update(classify(read, calibrator.current.baseline), performance.now())
+          setLearning(!calibrator.current.calibrated)
           setSnapshot(next)
-          if (overlay.current) drawFace(overlay.current, video.current, face, edges, next.state)
+          if (overlay.current) drawFace(overlay.current, view, face, edges, next.state)
           if (next.checkIn) {
             chime(); setCheckIn(true)
             live.current.paused = live.current.running; setPausedTimer(live.current.running)
@@ -126,11 +160,15 @@ export default function FocusGuard({ running, onAway, onBack, onGaze }: Props) {
       stopped = true
       window.clearInterval(interval)
       stream?.getTracks().forEach(track => track.stop())
-      landmarker?.close()
-      live.current.paused = false
-      setStatus('off'); setSnapshot(IDLE); setCheckIn(false)
+      try { landmarker?.close() } catch { /* Already closed. */ }
+      if (element) element.srcObject = null
+      // Turning camera focus off clears everything; a restart keeps the session's numbers.
+      if (!restarting) {
+        live.current.paused = false; restarts.current = []
+        setAttempt(0); setStatus('off'); setSnapshot(IDLE); setCheckIn(false); setLearning(false)
+      }
     }
-  }, [on])
+  }, [on, attempt])
   const isLive = status === 'live'
   const state = isLive ? snapshot.state : 'none'
   useEffect(() => { onGaze(isLive ? state : null) }, [isLive, state, onGaze])
@@ -145,7 +183,7 @@ export default function FocusGuard({ running, onAway, onBack, onGaze }: Props) {
     <div className="card-heading">
       <div className="guard-title">
         <span className="guard-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" /><circle cx="12" cy="12" r="2.8" /></svg></span>
-        <div><h3 id="guard-title">Camera focus</h3><span>{on ? isLive ? checkIn ? 'Waiting for you to look back' : running ? 'Watching while you focus' : 'Ready. Start the timer when you are' : 'Starting...' : 'Pauses the timer when you look away'}</span></div>
+        <div><h3 id="guard-title">Camera focus</h3><span>{on ? status === 'reconnecting' ? 'Reconnecting the camera...' : isLive ? checkIn ? 'Waiting for you to look back' : running ? 'Watching while you focus' : 'Ready. Start the timer when you are' : 'Starting...' : 'Pauses the timer when you look away'}</span></div>
       </div>
       <label className="switch"><span className="visually-hidden">Camera focus</span><input type="checkbox" role="switch" checked={on} onChange={e => { setNeedsPermission(false); setOn(e.target.checked) }} /></label>
     </div>
@@ -158,7 +196,7 @@ export default function FocusGuard({ running, onAway, onBack, onGaze }: Props) {
       <div className={`guard-video guard-video--${isLive ? state : 'starting'}`}>
         <video ref={video} muted playsInline aria-label="Camera preview" />
         <canvas ref={overlay} aria-hidden="true" />
-        <span className="guard-state" role="status"><i aria-hidden="true" />{status === 'starting' ? 'Starting camera...' : GAZE_LABEL[state]}</span>
+        <span className="guard-state" role="status"><i aria-hidden="true" />{status === 'starting' ? 'Starting camera...' : status === 'reconnecting' ? 'Reconnecting...' : isLive && learning && snapshot.state === 'screen' ? 'Learning where your screen is...' : GAZE_LABEL[state]}</span>
         {warning && <div className="guard-warning" role="status"><span>{running ? `Pausing in ${left}s` : `Away ${snapshot.awaySeconds}s`}</span><progress value={snapshot.awaySeconds} max={timeout} aria-hidden="true" /></div>}
       </div>
       <div className="guard-readout">

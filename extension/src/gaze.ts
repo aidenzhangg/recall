@@ -21,13 +21,48 @@ export function signals(landmarks: Point[], shapes: Record<string, number>): Sig
     down: (shape('eyeLookDownLeft') + shape('eyeLookDownRight')) / 2,
   }
 }
-export function classify(value: Signals | null): GazeState {
+/** Where this person's head points when they look at the screen. A webcam off to one side shifts it. */
+export type Baseline = { yaw: number; pitch: number }
+export const DEFAULT_BASELINE: Baseline = { yaw: .5, pitch: .56 }
+export function classify(value: Signals | null, baseline: Baseline = DEFAULT_BASELINE): GazeState {
   if (!value) return 'none'
   if (value.blink > .6) return 'closed'
-  if (Math.abs(value.yaw - .5) > .2 || value.pitch < .32 || value.pitch > .8) return 'away'
+  const pitch = value.pitch - baseline.pitch
+  if (Math.abs(value.yaw - baseline.yaw) > .2 || pitch < -.24 || pitch > .24) return 'away'
   // Eyes are allowed to drop a little: reading the lower half of a screen looks like "down".
   if (value.side > .7 || value.up > .7 || value.down > .88) return 'away'
   return 'screen'
+}
+
+const median = (values: number[]) => { const sorted = [...values].sort((a, b) => a - b); return sorted[Math.floor(sorted.length / 2)] }
+const CALIBRATION_FRAMES = 15, SMOOTHING = .5, DRIFT = .005
+/**
+ * Smooths frame-to-frame jitter and learns the person's own "looking at the screen" pose.
+ * The first few seconds of a roughly forward face set the baseline; after that it follows slow changes
+ * in posture, but only from frames that already count as on screen, so looking away never teaches it.
+ */
+export class GazeCalibrator {
+  baseline: Baseline = { ...DEFAULT_BASELINE }
+  private samples: Baseline[] = []
+  private smoothed: Signals | null = null
+  get calibrated() { return this.samples.length >= CALIBRATION_FRAMES }
+  read(raw: Signals | null): Signals | null {
+    if (!raw) { this.smoothed = null; return null }
+    const last = this.smoothed
+    // Blinks stay unsmoothed so closed eyes are noticed straight away.
+    const value: Signals = last ? { ...raw, yaw: last.yaw + (raw.yaw - last.yaw) * SMOOTHING, pitch: last.pitch + (raw.pitch - last.pitch) * SMOOTHING } : raw
+    this.smoothed = value
+    const forward = value.blink < .5 && Math.abs(value.yaw - .5) < .3 && value.pitch > .25 && value.pitch < .9
+    if (!forward) return value
+    if (!this.calibrated) {
+      this.samples.push({ yaw: value.yaw, pitch: value.pitch })
+      if (this.calibrated) this.baseline = { yaw: median(this.samples.map(item => item.yaw)), pitch: median(this.samples.map(item => item.pitch)) }
+    } else if (classify(value, this.baseline) === 'screen') {
+      this.baseline = { yaw: this.baseline.yaw + (value.yaw - this.baseline.yaw) * DRIFT, pitch: this.baseline.pitch + (value.pitch - this.baseline.pitch) * DRIFT }
+    }
+    return value
+  }
+  reset() { this.baseline = { ...DEFAULT_BASELINE }; this.samples = []; this.smoothed = null }
 }
 
 export type FocusSnapshot = {

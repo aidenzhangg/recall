@@ -7,7 +7,7 @@ const load = async name => {
   return import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'))
 }
 const { parseQuestions, parseCards, excerpt } = await load('aiParse')
-const { classify, FocusTracker, signals } = await load('gaze')
+const { classify, FocusTracker, GazeCalibrator, signals } = await load('gaze')
 
 test('model output becomes valid questions and malformed items are dropped', () => {
   const reply = 'Sure! ```json\n[{"question":"Why does water move into a cell placed in pure water?","options":["Osmosis","Diffusion of salt","Active transport","Evaporation"],"answer":"osmosis","explanation":"Water moves toward the higher solute concentration.","topic":"Osmosis"},{"question":"Bad one","options":["A","B","C"],"answer":"Not listed"},{"question":"Explain why mitochondria matter.","answer":"They release energy the cell can use."},{"question":"short","answer":"x"}]\n``` hope that helps'
@@ -94,4 +94,25 @@ test('a chat model is chosen from what the key can use, and replies can be strea
     assert.equal(text, 'Hello')
     assert.deepEqual(seen, ['Hel', 'Hello'])
   } finally { globalThis.fetch = original }
+})
+test('the calibrator learns a webcam that sits off to one side', () => {
+  const sideways = { ...facing, yaw: .72 }
+  // With the default straight-ahead pose, a camera off to the side reads as looking away.
+  assert.equal(classify(sideways), 'away')
+  const calibrator = new GazeCalibrator()
+  for (let i = 0; i < 15; i++) calibrator.read(sideways)
+  assert.ok(calibrator.calibrated)
+  assert.equal(classify(calibrator.read(sideways), calibrator.baseline), 'screen')
+  // Turning further away from that new centre still counts as away, and does not move the centre.
+  const before = calibrator.baseline.yaw
+  for (let i = 0; i < 20; i++) calibrator.read({ ...facing, yaw: .3 })
+  assert.equal(classify({ ...facing, yaw: .3 }, calibrator.baseline), 'away')
+  assert.equal(calibrator.baseline.yaw, before)
+})
+test('the calibrator smooths jitter but reacts to a blink at once', () => {
+  const calibrator = new GazeCalibrator()
+  calibrator.read(facing)
+  assert.equal(calibrator.read({ ...facing, yaw: .8 }).yaw, .65)
+  assert.equal(calibrator.read({ ...facing, blink: .9 }).blink, .9)
+  assert.equal(calibrator.read(null), null)
 })
