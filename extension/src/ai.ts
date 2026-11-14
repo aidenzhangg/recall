@@ -1,5 +1,6 @@
-// One place that decides which language model Recall talks to, with no backend required:
-//  1. "key"    - the key the person who built this copy put in extension/.env.local (see builtIn below).
+// One place that decides which language model Recall talks to:
+//  0. "cloud"  - Recall AI on Supabase (supabase/functions/ai). The key stays on the server; needs a signed-in account.
+//  1. "key"    - a key the person who built this copy put in extension/.env.local (see builtIn below). Shipped in the build.
 //  2. "device" - Chrome's built-in on-device model (no key, nothing leaves the computer).
 //  3. "none"   - no model; callers fall back to notes search and rule-based questions.
 // No key is ever written in this source code.
@@ -19,7 +20,7 @@ export const PROVIDERS: Record<Provider, { name: string; url: string; note: stri
 export function pickModel(provider: Provider, ids: string[]): string {
   const usable = ids.filter(id => !/preview|exp|live|vision|search|thinking|native|computer|robotics|learnlm|aqa|compound|speech|transcri/i.test(id))
   const pool = usable.length ? usable : ids
-  const wanted = provider === 'groq' ? [/llama-3\.3-70b/, /llama.*70b/, /llama/, /gemma|qwen/]
+  const wanted = provider === 'groq' ? [/gpt-oss-120b/, /gpt-oss/, /qwen/, /llama/]
     : provider === 'gemini' ? [/^gemini-[\d.]+-flash$/, /flash(?!-lite)/, /flash/, /gemini/]
     : provider === 'openrouter' ? [/llama-3\.3-70b.*:free$/, /:free$/]
     : provider === 'openai' ? [/^gpt-[\d.]+o?-mini$/, /mini/, /^gpt/] : []
@@ -41,7 +42,7 @@ function endpoint(settings: AiSettings): string {
 }
 // An optional shared key, read at build time from the git-ignored extension/.env.local. It is never in the repository,
 // but it IS inside the built extension, so anyone who installs that build can read it. Use a free key you can revoke.
-const DEFAULT_MODEL: Partial<Record<Provider, string>> = { groq: 'llama-3.3-70b-versatile', gemini: 'gemini-2.5-flash' }
+const DEFAULT_MODEL: Partial<Record<Provider, string>> = { groq: 'openai/gpt-oss-120b', gemini: 'gemini-2.5-flash' }
 function builtIn(): AiSettings | null {
   const env = (import.meta as { env?: Record<string, string | undefined> }).env
   const key = env?.VITE_AI_KEY?.trim()
@@ -55,6 +56,12 @@ export function hasBuiltInKey() { const shared = builtIn(); return !!shared && k
 function resolve(settings: AiSettings): AiSettings { return keyReady(settings) ? settings : builtIn() ?? settings }
 export function keyReady(settings: AiSettings) { return !!endpoint(settings) && !!settings.model.trim() && (!!settings.key.trim() || endpoint(settings).startsWith('http://')) }
 
+// Recall AI on Supabase, registered by account.ts when accounts are on. It only works while someone is signed in.
+type CloudAi = { url: string; signedIn: () => boolean; token: () => Promise<string> }
+let cloudAi: CloudAi | null = null
+export function setCloudAi(value: CloudAi | null) { cloudAi = value }
+const cloudReady = () => !!cloudAi?.signedIn()
+
 type DeviceSession = { prompt(input: string, options?: { signal?: AbortSignal }): Promise<string>; destroy(): void }
 type DeviceApi = { availability(): Promise<string>; create(options?: { initialPrompts?: ChatMessage[] }): Promise<DeviceSession> }
 function deviceApi(): DeviceApi | null {
@@ -62,6 +69,7 @@ function deviceApi(): DeviceApi | null {
   return candidate && typeof candidate.availability === 'function' ? candidate : null
 }
 export async function currentEngine(chosen = readAiSettings()): Promise<Engine> {
+  if (cloudReady()) return { kind: 'key', label: 'Recall AI', budget: 12000 }
   const settings = resolve(chosen)
   if (keyReady(settings)) return { kind: 'key', label: `${PROVIDERS[settings.provider].name} · ${settings.model}`, budget: 12000 }
   try { if (await deviceApi()?.availability() === 'available') return { kind: 'device', label: 'On-device model', budget: 4500 } } catch { /* Treated as no model. */ }
@@ -104,26 +112,51 @@ async function readStream(response: Response, onText: (text: string) => void): P
     if (done) return text
   }
 }
-/** `onText`, when given, receives the reply as it is written (provider keys only). */
+function cloudFailure(status: number, error: string): string {
+  if (error) console.warn(`Recall AI server said: ${error}`)
+  return error === 'daily_limit' ? 'You have used today\'s Recall AI limit. It resets tomorrow.'
+    : /^groq_.*(?:model|not_found|404|decommission)/i.test(error) ? 'Recall AI\'s model is not available. Set GROQ_MODEL in Supabase Edge Function secrets to a current Groq model.'
+    : /^groq_.*(?:401|invalid_api_key|auth)/i.test(error) ? 'The Groq key on the server was rejected. Check GROQ_API_KEY in Supabase Edge Function secrets.'
+    : /^groq_.*(?:429|rate)/i.test(error) ? 'Recall AI is busy. Wait a minute and try again.'
+    : error.startsWith('groq_') ? 'Recall AI\'s model provider returned an error. Try again.'
+    : status === 401 ? 'Sign in again to use Recall AI.'
+    : status === 413 ? 'That is too much text for Recall AI at once. Try a shorter question or less material.'
+    : status === 429 ? 'Recall AI is busy. Wait a minute and try again.'
+    : error === 'not_configured' ? 'Recall AI is missing GROQ_API_KEY in Supabase Edge Function secrets.'
+    : error === 'usage_table_missing' ? 'Recall AI is missing its usage table. Run supabase/schema.sql again.'
+    : status === 404 ? 'Recall AI is not deployed on the server yet.'
+    : 'Recall AI could not answer. Try again.'
+}
+/** Sends a chat request and reads the reply, streamed or whole. */
+async function chatRequest(url: string, headers: Record<string, string>, body: object, onText: ((text: string) => void) | undefined, failed: (response: Response) => Promise<string>): Promise<string> {
+  let response: Response
+  try {
+    response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ ...body, ...(onText ? { stream: true } : {}) }), signal: AbortSignal.timeout(60000) })
+  } catch { throw new Error('Could not reach the AI. Check your connection.') }
+  if (!response.ok) throw new Error(await failed(response))
+  if (onText && response.body && /event-stream/i.test(response.headers.get('content-type') ?? '')) {
+    const streamed = (await readStream(response, onText).catch(() => '')).trim()
+    if (!streamed) throw new Error('The AI sent an empty reply. Try again.')
+    return streamed
+  }
+  const data = await response.json().catch(() => ({}))
+  const text = data?.choices?.[0]?.message?.content
+  if (typeof text !== 'string' || !text.trim()) throw new Error('The AI sent an empty reply. Try again.')
+  return text.trim()
+}
+/** `onText`, when given, receives the reply as it is written (not for the on-device model). */
 export async function complete(messages: ChatMessage[], chosen = readAiSettings(), onText?: (text: string) => void): Promise<string> {
+  if (cloudReady()) {
+    let token: string
+    try { token = await cloudAi!.token() } catch { throw new Error('Sign in again to use Recall AI.') }
+    return chatRequest(`${cloudAi!.url}/functions/v1/ai`, { Authorization: `Bearer ${token}` }, { messages }, onText,
+      async response => cloudFailure(response.status, (await response.json().catch(() => ({})))?.error ?? ''))
+  }
   const settings = resolve(chosen)
   if (keyReady(settings)) {
-    let response: Response
-    try {
-      response = await fetch(`${endpoint(settings)}/chat/completions`, { method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(settings.key ? { Authorization: `Bearer ${settings.key.trim()}` } : {}) },
-        body: JSON.stringify({ model: settings.model.trim(), messages, ...(onText ? { stream: true } : {}) }), signal: AbortSignal.timeout(60000) })
-    } catch { throw new Error('Could not reach the AI provider. Check your connection.') }
-    if (!response.ok) throw new Error(failure(response.status))
-    if (onText && response.body && /event-stream/i.test(response.headers.get('content-type') ?? '')) {
-      const streamed = (await readStream(response, onText).catch(() => '')).trim()
-      if (!streamed) throw new Error('The AI provider sent an empty reply. Try again.')
-      return streamed
-    }
-    const data = await response.json().catch(() => ({}))
-    const text = data?.choices?.[0]?.message?.content
-    if (typeof text !== 'string' || !text.trim()) throw new Error('The AI provider sent an empty reply. Try again.')
-    return text.trim()
+    return chatRequest(`${endpoint(settings)}/chat/completions`, settings.key ? { Authorization: `Bearer ${settings.key.trim()}` } : {},
+      { model: settings.model.trim(), messages }, onText, async response => failure(response.status))
   }
   const api = deviceApi()
   if (!api) throw new Error('No AI model is set up.')

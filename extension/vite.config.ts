@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
   const base = env.VITE_API_BASE
   if (/service_role|^sb_secret_/.test(env.VITE_SUPABASE_ANON_KEY ?? '') ) throw new Error('VITE_SUPABASE_ANON_KEY looks like a secret key. Use the anon / publishable key instead.')
+  // With accounts on Supabase, Recall AI runs on the server (supabase/functions/ai), so a key must not ship in the build.
+  if (env.VITE_AI_KEY && env.VITE_SUPABASE_URL && mode === 'production') throw new Error('Remove VITE_AI_KEY from extension/.env.local. Recall AI now keeps the key on Supabase, and anything in .env.local is readable inside the built extension.')
   if (env.VITE_AI_KEY) console.warn('\nRecall: this build contains a shared AI key from .env.local. Anyone who installs it can read that key.\n')
   return {
     plugins: [react(), {

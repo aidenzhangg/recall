@@ -88,6 +88,9 @@ export function createCloud(config: CloudConfig, store: Store = localStorage, no
     },
     googleUrl: (redirect: string) => `${config.url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirect)}`,
     async me(): Promise<CloudResult> { return result(await fresh()) },
+    /** A current access token for the signed-in person, refreshed if needed. */
+    async accessToken(): Promise<string> { return (await fresh()).access },
+    url: config.url,
     async save(progressJson: string, signal?: AbortSignal) {
       const session = await fresh()
       await call('/rest/v1/progress?on_conflict=user_id', { token: session.access, prefer: 'resolution=merge-duplicates,return=minimal', signal,

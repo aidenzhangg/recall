@@ -15,20 +15,22 @@ import { MAX_CHATS } from './account'
 import type { SavedChat } from './account'
 
 type Message = { role: 'Recall' | 'You'; text: string; sources?: string[]; resources?: Resource[]; note?: string; lookup?: boolean; hint?: boolean }
-type Props = { questions: Question[]; current: number; notes: string; topics: string[]; token?: string; chats: SavedChat[]; onChats?: (update: (chats: SavedChat[]) => SavedChat[]) => void; onSignIn: () => void }
+type Props = { questions: Question[]; current: number; notes: string; token?: string; subjects: string[]; chats: SavedChat[]; onChats?: (update: (chats: SavedChat[]) => SavedChat[]) => void; onSignIn: () => void }
 const newId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 function when(time: number) {
   const days = Math.floor((Date.now() - time) / 86400000)
   return days < 1 ? new Date(time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : days < 7 ? new Date(time).toLocaleDateString([], { weekday: 'short' }) : new Date(time).toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 /** Recall AI chat. For quiz questions it only ever gives hints: the answer is never shown here. */
-export default function HintCoach({ questions, current, notes, topics, token, chats, onChats, onSignIn }: Props) {
+export default function HintCoach({ questions, current, notes, token, subjects, chats, onChats, onSignIn }: Props) {
   const passages = useMemo(() => studyPassages(notes), [notes])
   const [selected, setSelected] = useState(questions.length ? Math.min(current, questions.length - 1) : -1)
   const [message, setMessage] = useState('')
   const [history, setHistory] = useState<Message[]>([])
   const [chatId, setChatId] = useState<string>(newId)
   const [view, setView] = useState<'chat' | 'history'>('chat')
+  // '' is a general chat. Each subject from the profile gets its own chats.
+  const [subject, setSubject] = useState('')
   const [levels, setLevels] = useState<Record<number, number>>({})
   const [busy, setBusy] = useState(false)
   const [draft, setDraft] = useState('')
@@ -66,7 +68,7 @@ export default function HintCoach({ questions, current, notes, topics, token, ch
       setBusy(true); setDraft('')
       try {
         if (engine.kind !== 'none') {
-          const written = await chat({ notes, history: turns, message: trimmed, hidden, quizPrompt: question?.prompt, options: question?.options, hintLevel: local.hint ? level : undefined, onText: setDraft })
+          const written = await chat({ notes, history: turns, message: trimmed, subject: subject || undefined, hidden, quizPrompt: question?.prompt, options: question?.options, hintLevel: local.hint ? level : undefined, onText: setDraft })
           reply = local.hint
             ? { role: 'Recall', text: written.text, hint: true, note: `Hint ${level + 1} of 3` }
             : { role: 'Recall', text: written.text, sources: written.sources, note: written.sources.length ? 'Based on the note lines below' : 'Not from your notes, so check it against a source', resources: written.sources.length ? [] : local.resources }
@@ -89,11 +91,14 @@ export default function HintCoach({ questions, current, notes, topics, token, ch
       const old = previous.find(chat => chat.id === chatId)
       const title = old?.title ?? (question ? `Q${selected + 1}: ${question.prompt}` : trimmed).slice(0, 120)
       const messages = final.slice(-80).map(({ role, text, sources, note, hint }) => ({ role, text, ...(sources ? { sources } : {}), ...(note ? { note } : {}), ...(hint ? { hint } : {}) }))
-      return [{ id: chatId, title, updated: Date.now(), messages }, ...previous.filter(chat => chat.id !== chatId)].slice(0, MAX_CHATS)
+      return [{ id: chatId, title, updated: Date.now(), ...(subject ? { subject } : {}), messages }, ...previous.filter(chat => chat.id !== chatId)].slice(0, MAX_CHATS)
     })
   }
   function newChat() { setHistory([]); setLevels({}); setChatId(newId()); setView('chat') }
-  function openChat(chat: SavedChat) { setHistory(chat.messages); setLevels({}); setChatId(chat.id); setSelected(-1); setView('chat') }
+  function openChat(chat: SavedChat) { setHistory(chat.messages); setLevels({}); setChatId(chat.id); setSelected(-1); setSubject(chat.subject ?? ''); setView('chat') }
+  // Switching subject starts a fresh chat in it; the one you were in is already saved.
+  function pickSubject(next: string) { if (next === subject) return; setSubject(next); if (view === 'chat') { setHistory([]); setLevels({}); setChatId(newId()) } }
+  const shownChats = subject ? chats.filter(chat => chat.subject === subject) : chats
   function deleteChat(id: string) {
     onChats?.(previous => previous.filter(chat => chat.id !== id))
     if (id === chatId) newChat()
@@ -106,7 +111,7 @@ export default function HintCoach({ questions, current, notes, topics, token, ch
   const smart = engine.kind !== 'none' || cloudOn
   const suggestions = question
     ? [levels[selected] ? 'Another hint' : 'Give me a hint', 'Explain the idea behind this']
-    : history.length || !smart ? [] : topics.length ? [...topics.slice(0, 2).map(topic => `Explain ${topic} simply`), 'Quiz me on the hardest idea'] : ['How should I study for an exam?', 'Explain photosynthesis simply']
+    : []
   return <aside className="chat" aria-labelledby="coach-title">
     <header className="chat-header">
       <div><h2 id="coach-title">Recall AI</h2><p><span className={`model-dot model-dot--${smart ? 'ready' : 'off'}`} aria-hidden="true" />{smart ? 'Hints only. I never give away quiz answers.' : ready ? 'AI is not set up in this build' : 'Checking...'}</p></div>
@@ -116,10 +121,13 @@ export default function HintCoach({ questions, current, notes, topics, token, ch
       <button type="button" aria-pressed={view === 'chat'} onClick={() => setView('chat')}>Chat</button>
       <button type="button" aria-pressed={view === 'history'} onClick={() => setView('history')}>History{chats.length ? <span className="chat-count">{chats.length}</span> : null}</button>
     </div>}
+    {subjects.length > 0 && <div className="subject-tabs" role="group" aria-label={view === 'history' ? 'Show chats for' : 'Chat subject'}>
+      {['', ...subjects].map(item => <button key={item || 'general'} type="button" aria-pressed={subject === item} onClick={() => pickSubject(item)}>{item || (view === 'history' ? 'All' : 'General')}{view === 'history' && item ? <span>{chats.filter(chat => chat.subject === item).length}</span> : null}</button>)}
+    </div>}
     {onChats && view === 'history' ? <section className="chat-history" aria-label="Past chats">
-      {!chats.length ? <div className="chat-empty"><h3>No past chats yet</h3><p>Chats you have with Recall AI show up here so you can pick them back up.</p><button type="button" className="secondary" onClick={newChat}>Start a chat</button></div>
-      : <ul className="chat-list">{chats.map(chat => <li key={chat.id} className={chat.id === chatId && history.length ? 'chat-item chat-item--open' : 'chat-item'}>
-          <button type="button" className="chat-open" onClick={() => openChat(chat)}><strong>{chat.title}</strong><span>{chat.messages.length} messages · {when(chat.updated)}</span></button>
+      {!shownChats.length ? <div className="chat-empty"><h3>{subject ? `No ${subject} chats yet` : 'No past chats yet'}</h3><p>Chats you have with Recall AI show up here so you can pick them back up.</p><button type="button" className="secondary" onClick={newChat}>Start a{subject ? ` ${subject}` : ''} chat</button></div>
+      : <ul className="chat-list">{shownChats.map(chat => <li key={chat.id} className={chat.id === chatId && history.length ? 'chat-item chat-item--open' : 'chat-item'}>
+          <button type="button" className="chat-open" onClick={() => openChat(chat)}><strong>{chat.title}</strong><span>{!subject && chat.subject ? <em className="chat-subject">{chat.subject}</em> : null}{chat.messages.length} {chat.messages.length === 1 ? 'message' : 'messages'} · {when(chat.updated)}</span></button>
           <button type="button" className="ghost chat-delete" aria-label={`Delete chat: ${chat.title}`} title="Delete chat" onClick={() => deleteChat(chat.id)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg></button>
         </li>)}</ul>}
     </section> : <>
@@ -127,7 +135,7 @@ export default function HintCoach({ questions, current, notes, topics, token, ch
     {question && <p className="coach-context">{question.prompt}</p>}
     <div className="coach-messages" role="log" aria-label="Recall AI conversation" aria-live="polite">
       {!history.length && <div className="chat-empty"><Logo className="chat-mark" />
-        {smart || !ready ? <h3>{question ? 'Stuck? Ask for a hint' : passages.length ? 'Ask anything about your notes' : 'What do you want to learn?'}</h3>
+        {smart || !ready ? <h3>{question ? 'Stuck? Ask for a hint' : subject ? `Ask anything about ${subject}` : passages.length ? 'Ask anything about your notes' : 'What do you want to learn?'}</h3>
         : <><h3>AI is not set up yet</h3><p>Until it is, I can find the matching lines in your notes and give basic hints.</p>
           {device === 'downloadable' && <button type="button" className="secondary" onClick={() => void enableDevice()}>Turn on Chrome's built-in AI</button>}
           {device === 'downloading' && <p>Downloading{download ? ` ${download}%` : ''}...</p>}</>}
@@ -141,7 +149,7 @@ export default function HintCoach({ questions, current, notes, topics, token, ch
       <div ref={end} />
     </div>
     {suggestions.length > 0 && <div className="chips suggestions" aria-label="Suggested questions">{suggestions.map(text => <button key={text} type="button" className="chip" disabled={busy} onClick={() => void ask(text)}>{text}</button>)}</div>}
-    <form className="coach-form" onSubmit={e => { e.preventDefault(); void ask(message) }}><label className="visually-hidden" htmlFor="hint-message">Your message</label><textarea id="hint-message" rows={1} maxLength={2000} value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(message) } }} placeholder={question ? 'Say where you are stuck' : 'Message Recall AI'} /><button className="send" aria-label="Send" disabled={!message.trim() || busy}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg></button></form>
+    <form className="coach-form" onSubmit={e => { e.preventDefault(); void ask(message) }}><label className="visually-hidden" htmlFor="hint-message">Your message</label><textarea id="hint-message" rows={1} maxLength={2000} value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(message) } }} placeholder={question ? 'Say where you are stuck' : 'Ask Recall AI'} /><button className="send" aria-label="Send" disabled={!message.trim() || busy}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg></button></form>
     {!onChats && history.length > 0 && <p className="coach-note chat-unsaved">Not saved. <button type="button" className="text-button" onClick={onSignIn}>Sign in</button> to keep your chats.</p>}
     </>}
   </aside>

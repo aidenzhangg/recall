@@ -1,16 +1,40 @@
 import type { Question, QuizFormat, ReviewItem } from './quiz'
 import { API_BASE } from './api'
 import { cloudConfig, createCloud } from './supabase'
+import { setCloudAi } from './ai'
 // With a Supabase project configured, accounts live there and nothing is saved to this device.
 const config = cloudConfig()
 const cloud = config ? createCloud(config) : null
 export const CLOUD_ACCOUNTS = !!cloud
+// Recall AI goes through the account's Supabase project, so the AI key never ships in the extension.
+if (cloud) setCloudAi({ url: cloud.url, signedIn: () => cloud.signedIn(), token: () => cloud.accessToken() })
 export type User = { id: string; name: string; email: string }
 export type Account = { token: string; user: User }
 export type SavedMessage = { role: 'Recall' | 'You'; text: string; sources?: string[]; note?: string; hint?: boolean }
-export type SavedChat = { id: string; title: string; updated: number; messages: SavedMessage[] }
+export type SavedChat = { id: string; title: string; updated: number; subject?: string; messages: SavedMessage[] }
 export const MAX_CHATS = 30
-export type SavedProgress = { version: 1; notes: string; noteName: string; count: number; format?: QuizFormat; hintsOn: boolean; questions: Question[]; answers: string[]; submitted: boolean; questionIndex: number; studyDays: string[]; review?: ReviewItem[]; adaptive?: boolean; theme?: 'light' | 'dark'; blocker?: { enabled: boolean; domains: string[] }; chats?: SavedChat[] }
+/** What a person chose to show about themselves. Every field is optional. */
+export type UserProfile = { name?: string; bio?: string; color?: string; school?: string; level?: string; subjects?: string[]; goal?: number; examDate?: string }
+export const AVATAR_COLORS = ['lime', 'sky', 'violet', 'rose', 'amber', 'teal'] as const
+export const PROFILE_LEVELS = ['Elementary school', 'Middle school', 'High school', 'College or university', 'Graduate school', 'Learning on my own', 'Other'] as const
+export const STUDY_GOALS = [15, 30, 45, 60, 90] as const
+/** The name shown around the app: the one picked in the profile, otherwise the account's. */
+export function displayName(account: Account | null, profile: UserProfile) { return profile.name?.trim() || account?.user.name || 'Student' }
+export function parseProfile(raw: unknown): UserProfile {
+  if (!raw || typeof raw !== 'object') return {}
+  const v = raw as Record<string, unknown>
+  const text = (value: unknown, max: number) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined
+  const profile: UserProfile = {
+    name: text(v.name, 40), bio: text(v.bio, 120), school: text(v.school, 60),
+    color: (AVATAR_COLORS as readonly string[]).includes(v.color as string) ? v.color as string : undefined,
+    level: (PROFILE_LEVELS as readonly string[]).includes(v.level as string) ? v.level as string : undefined,
+    subjects: Array.isArray(v.subjects) ? [...new Set(v.subjects.filter((item): item is string => typeof item === 'string' && !!item.trim()).map(item => item.trim().slice(0, 30)))].slice(0, 8) : undefined,
+    goal: (STUDY_GOALS as readonly number[]).includes(v.goal as number) ? v.goal as number : undefined,
+    examDate: typeof v.examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.examDate) ? v.examDate : undefined,
+  }
+  return Object.fromEntries(Object.entries(profile).filter(([, value]) => value !== undefined && !(Array.isArray(value) && !value.length))) as UserProfile
+}
+export type SavedProgress = { version: 1; notes: string; noteName: string; count: number; format?: QuizFormat; hintsOn: boolean; questions: Question[]; answers: string[]; submitted: boolean; questionIndex: number; studyDays: string[]; review?: ReviewItem[]; adaptive?: boolean; theme?: 'light' | 'dark'; blocker?: { enabled: boolean; domains: string[] }; chats?: SavedChat[]; profile?: UserProfile }
 export function parseProgress(raw: string): SavedProgress {
   const v = JSON.parse(raw)
   if (v?.version !== 1 || typeof v.notes !== 'string' || typeof v.noteName !== 'string' || typeof v.hintsOn !== 'boolean'
@@ -22,12 +46,13 @@ export function parseProgress(raw: string): SavedProgress {
   const theme = v.theme === 'light' || v.theme === 'dark' ? { theme: v.theme as 'light' | 'dark' } : {}
   const blocker = v.blocker && Array.isArray(v.blocker.domains) ? { blocker: { enabled: v.blocker.enabled === true, domains: [...new Set<string>(v.blocker.domains.filter((d: unknown) => typeof d === 'string' && d.length <= 253 && /^[a-z0-9.-]+$/.test(d)))].slice(0, 100) } } : {}
   const chats = Array.isArray(v.chats) ? { chats: v.chats.filter((chat: SavedChat) => chat && typeof chat.id === 'string' && chat.id.length <= 64 && typeof chat.title === 'string' && Number.isFinite(chat.updated) && Array.isArray(chat.messages)).slice(0, MAX_CHATS).map((chat: SavedChat): SavedChat => ({
-    id: chat.id, title: chat.title.slice(0, 120), updated: chat.updated,
+    id: chat.id, title: chat.title.slice(0, 120), updated: chat.updated, ...(typeof chat.subject === 'string' && chat.subject.trim() ? { subject: chat.subject.trim().slice(0, 30) } : {}),
     messages: chat.messages.filter(m => m && (m.role === 'You' || m.role === 'Recall') && typeof m.text === 'string').slice(-80).map(m => ({ role: m.role, text: m.text.slice(0, 6000),
       ...(Array.isArray(m.sources) ? { sources: m.sources.filter(x => typeof x === 'string').slice(0, 5).map(x => x.slice(0, 2000)) } : {}),
       ...(typeof m.note === 'string' ? { note: m.note.slice(0, 300) } : {}), ...(m.hint === true ? { hint: true } : {}) })),
   })).filter((chat: SavedChat) => chat.messages.length) } : {}
-  return { ...theme, ...blocker, ...chats, review, adaptive: v.adaptive !== false, version: 1, notes: v.notes, noteName: v.noteName, count: [5,10,15].includes(v.count) ? v.count : 5, hintsOn: v.hintsOn, format: ['blank','choice','long','mixed'].includes(v.format) ? v.format : 'blank', questions: v.questions.map((q: Question) => {
+  const profile = v.profile ? { profile: parseProfile(v.profile) } : {}
+  return { ...theme, ...blocker, ...chats, ...profile, review, adaptive: v.adaptive !== false, version: 1, notes: v.notes, noteName: v.noteName, count: [5,10,15].includes(v.count) ? v.count : 5, hintsOn: v.hintsOn, format: ['blank','choice','long','mixed'].includes(v.format) ? v.format : 'blank', questions: v.questions.map((q: Question) => {
       const kind = q.kind ?? 'blank'
       if (!['blank','choice','long'].includes(kind) || (kind === 'choice' && (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 4 || !q.options.every(option => typeof option === 'string') || new Set(q.options).size !== q.options.length || !q.options.includes(q.answer)))) throw new Error('Invalid saved question')
       return { prompt: q.prompt, answer: q.answer, kind, ...(typeof q.source === 'string' ? { source: q.source } : {}), ...(typeof q.topic === 'string' ? { topic: q.topic } : {}), ...(typeof q.explanation === 'string' ? { explanation: q.explanation.slice(0, 800) } : {}), ...(kind === 'choice' ? { options: q.options } : {}) }

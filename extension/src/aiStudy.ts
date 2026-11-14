@@ -45,7 +45,7 @@ ${material}`
 
 export type ChatTurn = { role: 'user' | 'assistant'; content: string }
 /** A real conversation: earlier turns are kept, and the notes most relevant to the latest message are attached. */
-export async function chat(input: { notes: string; history: ChatTurn[]; message: string; hidden?: string; quizPrompt?: string; options?: string[]; hintLevel?: number; onText?: (text: string) => void }): Promise<{ text: string; sources: string[]; label: string }> {
+export async function chat(input: { notes: string; history: ChatTurn[]; message: string; subject?: string; hidden?: string; quizPrompt?: string; options?: string[]; hintLevel?: number; onText?: (text: string) => void }): Promise<{ text: string; sources: string[]; label: string }> {
   const engine = await currentEngine()
   if (engine.kind === 'none') throw new Error('No AI model is set up.')
   const passages = studyPassages(input.notes)
@@ -58,6 +58,7 @@ export async function chat(input: { notes: string; history: ChatTurn[]; message:
   ]
   const context = sources.length ? sources.join('\n') : excerpt(passages, '', Math.min(engine.budget, 3000))
   const system = [TUTOR,
+    input.subject ? `This chat is about ${input.subject.slice(0, 30)}. Answer as a ${input.subject.slice(0, 30)} tutor, and use examples from ${input.subject.slice(0, 30)}.` : '',
     context ? `The student's notes say:\n${context}\n\nPrefer these notes. If you add something that is not in them, say that it is outside their notes.` : 'The student has not added notes yet. Answer from general knowledge and say "I am not sure" rather than guessing.',
     input.quizPrompt ? `The student is working on this quiz question: "${input.quizPrompt}"${input.options?.length ? `\nOptions: ${input.options.join(' | ')}` : ''}` : '',
     input.hidden ? `The correct answer is "${input.hidden}". They must work it out themselves, so never write that answer, spell it, or give its first letter or length. Teach the idea instead.` : '',
@@ -85,7 +86,7 @@ export async function gradeAnswer(input: { notes: string; prompt: string; answer
 
 const plain = (text: string) => text.replace(/^```\w*\n?|```$/gm, '').replace(/\*\*/g, '').replace(/^#+\s*/gm, '').trim()
 /** A new exam in the same format as a past paper: same layout, numbering and marks, different questions. */
-export async function predictPaper(paper: string): Promise<{ text: string; cut: boolean }> {
+export async function predictPaper(paper: string, changes = ''): Promise<{ text: string; cut: boolean }> {
   const engine = await currentEngine()
   if (engine.kind === 'none') throw new Error('Connect an AI in Recall AI first.')
   const budget = engine.kind === 'key' ? 14000 : 4000
@@ -97,7 +98,7 @@ export async function predictPaper(paper: string): Promise<{ text: string; cut: 
 Keep exactly the same format, line by line: the same title and header lines (add "Prediction paper" to the title), the same instructions, the same section headings, the same question numbering and sub-parts such as (a), (b), (i), the same mark allocations written the same way, the same number of questions, and the same question types (multiple choice stays multiple choice with the same number of options, calculations stay calculations, essays stay essays).
 
 Change every question: test the same topics and skills at the same difficulty, but with different wording, different scenarios and different numbers. Do not repeat any original question. Do not include answers. Do not add notes, commentary or markdown. Keep the line breaks and blank lines of the original layout.
-
+${changes.trim() ? `\nThe student asked for these changes, which override the rules above where they conflict: ${changes.trim().slice(0, 400)}\n` : ''}
 PAST PAPER:
 ${original}` },
   ])
@@ -112,4 +113,26 @@ export async function markScheme(paper: string): Promise<string> {
     { role: 'user', content: `Write a mark scheme for this paper. Use the same question numbers and sub-parts. For each, give the answer or the key points that earn the marks, matching the marks available. Be brief. No markdown.\n\nPAPER:\n${paper.slice(0, 14000)}` },
   ])
   return plain(text).slice(0, 30000)
+}
+
+export type Difficulty = 'easier' | 'same' | 'harder'
+export type ProblemSet = { problems: string; answers: string; label: string }
+const ANSWERS = '===ANSWERS==='
+/** A set of practice problems on one topic, with worked answers kept separate so they can go at the back. */
+export async function problemSet(input: { notes: string; topic: string; count: number; difficulty: Difficulty; extra?: string; weak: string[] }): Promise<ProblemSet> {
+  const engine = await currentEngine()
+  if (engine.kind === 'none') throw new Error('no-ai')
+  const topic = input.topic.trim().slice(0, 120)
+  const material = excerpt(studyPassages(input.notes), topic, Math.min(engine.budget, 9000))
+  const level = input.difficulty === 'easier' ? 'a little easier than a typical exam, to build confidence' : input.difficulty === 'harder' ? 'harder than a typical exam, with multi-step problems' : 'at typical exam difficulty'
+  const text = await complete([
+    { role: 'system', content: 'You are an experienced teacher writing a practice problem set. Plain text only, no markdown.' },
+    { role: 'user', content: `Write a problem set of ${input.count} problems${topic ? ` on ${topic}` : ''}, ${level}.
+Mix problem types that suit the subject: calculations with real numbers, short explanations, applying ideas to new situations, and a few multi-part problems with (a), (b). Number them 1, 2, 3... and show marks in brackets like [3 marks].${input.weak.length ? `\nThe student keeps getting these wrong, so give them extra problems: ${input.weak.slice(0, 5).join(', ')}.` : ''}${input.extra?.trim() ? `\nAlso: ${input.extra.trim().slice(0, 300)}` : ''}
+Then write a line containing only ${ANSWERS} and after it a worked answer for every problem, numbered the same, showing the steps.
+${material.length >= 80 ? `Base the problems on these notes. You may use standard knowledge of the topic beyond them, but stay consistent with the notes:\n${material}` : 'There are no notes, so use standard course knowledge of the topic.'}` },
+  ])
+  const [problems, answers = ''] = plain(text).split(ANSWERS)
+  if (problems.trim().length < 40) throw new Error('The AI did not return a usable problem set. Try again.')
+  return { problems: problems.trim().slice(0, 30000), answers: answers.trim().slice(0, 30000), label: engine.label }
 }

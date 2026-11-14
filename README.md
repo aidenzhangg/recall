@@ -4,17 +4,21 @@ A Chrome side-panel workspace for studying your own notes and course materials. 
 
 ## What works
 
-Recall runs entirely inside Chrome, with no server of its own. Study data (notes, quizzes, flashcards, review history) is saved only to an account, never to the device. Accounts live in a Supabase project you connect; without one, work lasts until Recall is closed.
+Recall runs inside Chrome. Study data (notes, quizzes, flashcards, review history, chats and your profile) is saved only to an account, never to the device. Accounts live in a Supabase project you connect, and Recall AI runs through a small Supabase Edge Function so no AI key ships in the extension. You can also **continue as a guest**: everything works except Recall AI, and nothing is saved.
 
 - **Notes and PDFs.** Paste notes or import TXT, Markdown or PDF files, including past papers. PDFs are read in the browser, in reading order, with page and word counts and a warning for pages that have no selectable text. Scanned pages need text recognition, which is not built yet.
 - **Recall AI chat.** A dedicated chat about your notes: explanations in plain words, comparisons, follow-up questions, "quiz me". It reads the relevant parts of your notes and writes its own answer, then shows which note lines it leaned on. For quiz questions it is hints only: three steps that explain the idea, narrow it down and get you almost there. It never gives the answer, and a reply that would leak it is thrown away. There is no setting that turns hints off.
 - **AI-written quizzes and flashcards.** Quizzes are written from the meaning of your notes (real questions, plausible wrong options, a one-line explanation after you answer) and aimed at the topics you have missed. Flashcards can be written the same way.
-- **AI with no setup for users.** The person who builds the extension supplies the AI key (see "The AI key" below). Users never see or enter a key. Where Chrome offers its on-device model, that works too. With no AI at all, Recall falls back to rule-based questions and a search of your notes.
+- **AI with no setup for users.** Recall AI runs on the server (a Supabase Edge Function calling Groq), so users never see or enter a key, and the key is not inside the extension. Each signed-in person has a daily limit. Where Chrome offers its on-device model, that works too, and with no AI at all Recall falls back to rule-based questions and notes search.
 - **Practice.** Multiple choice, fill in the blank, long answer or mixed. Every question is marked as soon as you answer it, written answers get AI feedback when an AI is connected, and the session ends on a results page that lists each question, your answer and the correct one. Only first-try answers score. Misses and correct answers are tracked per passage, missed material comes back first, and a later review is scheduled after correct answers. This is a rule-based scheduler, not a trained model.
 - **Camera focus.** An optional check on the focus timer that uses the webcam to estimate whether you are looking at the screen: looking at screen, looking away, eyes closed or no face. The preview traces your face outline, and the card shows screen attention (time looking at the screen divided by time tracked), how many times you looked away, your best unbroken streak and a strip of the last minute. After three seconds away it counts down; at the timeout you choose (15 seconds to 2 minutes) it chimes and pauses the timer. Looking back at the screen for two seconds resumes it by itself, or press **I'm back**. Time spent paused is not scored.
 - **Site blocker.** Block distracting domains and their subdomains with one switch, quick-add buttons for common sites and a list you manage. It uses Chrome's blocking rules and records no browsing history.
-- **Dashboard.** Missed topics with one-click targeted practice and search links (Wikipedia, Khan Academy, YouTube, MIT OpenCourseWare). The links open a search; they are not curated recommendations.
-- **Prediction papers.** Upload a past paper PDF and, with an AI connected, Recall writes a new paper in the same format: same header, sections, numbering, sub-parts and marks, with different questions on the same topics. Save it as a PDF, answer it inside Recall, or add a mark scheme. It copies the paper's structure and wording style, not its fonts, logos or diagrams, and it is an AI guess at similar questions, not a real or leaked exam.
+- **Dashboard.** Your current material, missed topics with one-click targeted practice and search links (Wikipedia, Khan Academy, YouTube, MIT OpenCourseWare), and this week's streak. The links open a search; they are not curated recommendations.
+- **Targeted practice.** Questions you get wrong are tracked by topic. After a quiz, **Practise what I missed** builds a new quiz aimed only at those topics, and missed topics are suggested for problem sets.
+- **Practice papers.** Upload a past paper PDF and Recall writes a new paper in the same format: same header, sections, numbering, sub-parts and marks, with different questions on the same topics. Ask for changes if you want them ("half the length", "harder"). Download it as a real PDF, with an optional mark scheme on its own page, or answer it inside Recall.
+- **Problem sets.** Pick a topic, 5 to 20 problems and a difficulty, and get worked answers. Download a PDF with the answers at the back. Without AI, a simpler set is built from your notes.
+- **Subject chats and history.** Signed-in users get a History tab of past Recall AI chats. Each subject in your profile gets its own chats, and the AI tutors in that subject.
+- **Profile.** A colour, display name, short bio, optional school and level (elementary through graduate, or learning on your own), subjects, a daily study goal and your next exam date, with streak and study stats.
 - **Focus lock.** Starting the focus timer turns site blocking on and locks it: until the session finishes or you end it, sites cannot be removed and blocking cannot be turned off. Pages that were already open stay open until they are reloaded.
 - **Past papers.** Numbered questions found in an imported paper, one at a time, with self-review (papers carry no answer key).
 - **Flashcards and focus timer.** Flip, Got it / Still learning, a missed-card round, and a 15 to 60 minute timer.
@@ -30,7 +34,9 @@ The interface is a dark or light side-panel workspace set in Outfit and IBM Plex
 | Extension | React 19, TypeScript, Vite, plain CSS, Chrome Manifest V3 (side panel, storage, declarativeNetRequest, identity) |
 | PDF reading | pdf.js (`pdfjs-dist`), in the browser |
 | Camera focus | MediaPipe Tasks Vision **Face Landmarker**, running as WebAssembly in the browser |
-| AI chat, hints, quizzes, flashcards | Chrome's built-in Prompt API (Gemini Nano), or a hosted model through an OpenAI-compatible API: Groq, Google Gemini, OpenRouter or OpenAI |
+| AI chat, hints, quizzes, papers, problem sets | Recall AI: a Supabase Edge Function (Deno) that calls Groq, currently OpenAI's open model `gpt-oss-120b`. Fallbacks: Chrome's built-in Prompt API (Gemini Nano) or rule-based code |
+| Accounts and storage | Supabase Auth (email and Google), PostgreSQL with row-level security |
+| PDF output | jsPDF, in the browser |
 | Optional backend | Java 21, Spring Boot, JDBC with HikariCP, PDFBox, Maven |
 | Optional database | PostgreSQL, for example Supabase or Neon |
 | Optional hosting | AWS Elastic Beanstalk (Java / Corretto 21) |
@@ -41,7 +47,7 @@ The interface is a dark or light side-panel workspace set in Outfit and IBM Plex
 Recall does not train, fine-tune or ship a model of its own, and it never uses your notes or camera to train anything.
 
 - **Face Landmarker** is a pretrained model published by Google (MediaPipe). Recall downloads it as is and only reads its output: face landmark positions and eye "blendshape" scores. The rules that turn those numbers into "looking at screen", "looking away" or "eyes closed" are plain hand-written thresholds in `extension/src/gaze.ts`, not machine learning.
-- **Language models** (Gemini Nano on device, or whichever model you pick at Groq, Gemini, OpenRouter or OpenAI) are pretrained by their providers. Recall sends them a prompt and shows the reply.
+- **Language models** (`gpt-oss-120b` on Groq through the Edge Function, or Gemini Nano on device) are pretrained by their providers. Recall sends them a prompt and shows the reply.
 - **Review scheduling and the fallback quiz generator** are rule-based code.
 
 ## Run it
@@ -59,14 +65,11 @@ Rebuild and reload the extension after source changes. For frontend development,
 
 ### The AI key
 
-Users are never asked for a key. Whoever builds the extension provides one, in a file Git ignores:
+Users are never asked for a key, and with Supabase connected the key is never in the extension either. It lives in Supabase as an Edge Function secret (see "Recall AI without a key in the extension" below).
 
-1. Get a free key: Groq at `https://console.groq.com/keys` (**Create API Key**, starts with `gsk_`), or Google Gemini at `https://aistudio.google.com/apikey`.
-2. Copy `extension/.env.example` to `extension/.env.local`.
-3. Set `VITE_AI_PROVIDER=groq` (or `gemini`) and paste the key after `VITE_AI_KEY=`. `VITE_AI_MODEL` is optional.
-4. Run `npm run build --prefix extension` and share the `extension/dist` folder.
+Without Supabase you can still put a key in `extension/.env.local` (`VITE_AI_PROVIDER=groq`, `VITE_AI_KEY=...`), but then it is inside the built extension and anyone who installs that build can read it. The production build refuses to include `VITE_AI_KEY` when Supabase is configured.
 
-The key is not in the repository, but it is inside the built extension, and anyone who installs that build can read it and use it elsewhere. Only use a free key with no payment method attached, expect its rate limit to be shared by everyone, and revoke it at the provider if it is abused. The only way to keep a key truly hidden from users is to hold it on a server.
+Groq retires models over time. `llama-3.3-70b-versatile` stopped working on free plans in August 2026; Recall now defaults to `openai/gpt-oss-120b`. To change it, set the `GROQ_MODEL` secret in Supabase.
 
 ### Accounts that save to the cloud (Supabase, no server)
 
@@ -84,6 +87,16 @@ With this on, sign-in is the first screen, people stay signed in between session
 The Project URL and anon key are meant to be public; row-level security is what protects the data. **Never** use the `service_role` or secret key in the extension: it bypasses that security. As the project owner you can read stored notes in the Supabase dashboard, so tell your users.
 
 **Continue with Google** in this mode needs two more steps in Supabase: enable the Google provider under Authentication (it asks for a Google OAuth client ID and secret, which stay in Supabase), and add `https://<your-extension-id>.chromiumapp.org/` under Authentication, URL Configuration, Redirect URLs. Recall Connect (phone photos) still needs the Java backend.
+
+### Recall AI without a key in the extension (Supabase Edge Function)
+
+With accounts on Supabase, Recall AI runs through `supabase/functions/ai`, so the Groq key stays on Supabase and never ships in the extension. Only signed-in users get answers, with a daily limit each (200 by default). Guests can use everything else, but not Recall AI.
+
+1. Run `supabase/schema.sql` again in the SQL Editor. It adds the `ai_usage` counter and the `use_ai` function.
+2. In Supabase open **Edge Functions**, then **Deploy a new function**, then **Via Editor**. Name it `ai`, paste `supabase/functions/ai/index.ts`, and deploy. Leave **Verify JWT** on.
+3. Open **Edge Functions**, then **Secrets**, and add `GROQ_API_KEY` with your Groq key (console.groq.com/keys). Optional: `GROQ_MODEL` (default `openai/gpt-oss-120b`) and `AI_DAILY_LIMIT` (default 200 requests per person per day).
+4. Delete the `VITE_AI_KEY` line from `extension/.env.local`. The production build refuses to run while it is there, because anything in that file ends up inside the extension.
+5. Run `npm run build --prefix extension` and reload the extension.
 
 ### Camera focus
 
@@ -183,13 +196,13 @@ Set `VITE_API_BASE` at build time to the HTTPS backend `/api` URL. The build add
 Recall is a student project, provided as is with no warranty. Read this before putting anything sensitive in it.
 
 - **Your notes and progress** are saved only to your account in the Supabase project the builder connected. Whoever owns that project can read them. Nothing study-related is written to the device; only your sign-in session and the light/dark setting are kept in the browser.
-- **AI.** Your questions, the relevant parts of your notes, quiz questions and written answers are sent from your browser to the AI provider the builder chose (Groq or Google) and handled under that provider's terms and privacy policy, which may allow logging or, on some free tiers, use for improving their models. Do not put personal, confidential or exam-restricted material in your notes. With Chrome's on-device model, nothing leaves the computer.
+- **AI.** Your questions, the relevant parts of your notes, quiz questions and written answers go from your browser to the Recall AI Edge Function in the builder's Supabase project, then to Groq, and are handled under Groq's terms and privacy policy. Do not put personal, confidential or exam-restricted material in your notes. With Chrome's on-device model, nothing leaves the computer.
 - **Camera.** Frames are processed in memory on your computer to get face landmarks and are then discarded. No image, video or face data is saved, uploaded, or used to identify anyone. The only request made is the one-time download of the model file from Google. Turning the switch off stops the camera.
-- **The AI key** belongs to whoever built the extension and is readable inside the build. Users do not enter one.
+- **The AI key** belongs to whoever built the extension and is kept in their Supabase project as a secret. It is not in the extension, and users do not enter one. Recall AI needs an account; guests do not get it.
 - **Accounts (optional backend).** Email, name, a salted PBKDF2 password hash and your progress snapshot are stored on whichever backend and database you or the host configure. Whoever runs that backend can read the stored notes. This application does not encrypt data at rest.
 - **Site blocker.** The list of sites is saved to your account, not the device. While blocking is on, Chrome holds the active rules; signing out clears them. No browsing history is recorded or sent.
 - **Accuracy.** AI answers, hints, marks and generated questions can be wrong. The attention percentage is an estimate of where your face points, not a measure of focus. Do not rely on either for grades, assessment or anything medical.
-- Recall collects no analytics and has no server of its own. It is not affiliated with Google, Groq, OpenRouter, OpenAI, Supabase or AWS.
+- Recall collects no analytics. Its only server-side code is the Recall AI Edge Function in the builder's Supabase project. It is not affiliated with Google, Groq, OpenRouter, OpenAI, Supabase or AWS.
 
 ## Privacy and limits
 
