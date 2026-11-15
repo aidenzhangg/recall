@@ -2,6 +2,7 @@ import type { Question, QuizFormat, ReviewItem } from './quiz'
 import { API_BASE } from './api'
 import { cloudConfig, createCloud } from './supabase'
 import { setCloudAi } from './ai'
+import { MAX_PICTURES, isSavedPicture } from './images'
 // With a Supabase project configured, accounts live there and nothing is saved to this device.
 const config = cloudConfig()
 const cloud = config ? createCloud(config) : null
@@ -10,7 +11,8 @@ export const CLOUD_ACCOUNTS = !!cloud
 if (cloud) setCloudAi({ url: cloud.url, signedIn: () => cloud.signedIn(), token: () => cloud.accessToken() })
 export type User = { id: string; name: string; email: string }
 export type Account = { token: string; user: User }
-export type SavedMessage = { role: 'Recall' | 'You'; text: string; sources?: string[]; note?: string; hint?: boolean }
+/** `images` are small JPEG previews of pictures the student attached; the full-size picture is not saved. */
+export type SavedMessage = { role: 'Recall' | 'You'; text: string; sources?: string[]; note?: string; hint?: boolean; images?: string[] }
 export type SavedChat = { id: string; title: string; updated: number; subject?: string; messages: SavedMessage[] }
 export const MAX_CHATS = 30
 /** What a person chose to show about themselves. Every field is optional. */
@@ -49,7 +51,8 @@ export function parseProgress(raw: string): SavedProgress {
     id: chat.id, title: chat.title.slice(0, 120), updated: chat.updated, ...(typeof chat.subject === 'string' && chat.subject.trim() ? { subject: chat.subject.trim().slice(0, 30) } : {}),
     messages: chat.messages.filter(m => m && (m.role === 'You' || m.role === 'Recall') && typeof m.text === 'string').slice(-80).map(m => ({ role: m.role, text: m.text.slice(0, 6000),
       ...(Array.isArray(m.sources) ? { sources: m.sources.filter(x => typeof x === 'string').slice(0, 5).map(x => x.slice(0, 2000)) } : {}),
-      ...(typeof m.note === 'string' ? { note: m.note.slice(0, 300) } : {}), ...(m.hint === true ? { hint: true } : {}) })),
+      ...(typeof m.note === 'string' ? { note: m.note.slice(0, 300) } : {}), ...(m.hint === true ? { hint: true } : {}),
+      ...(Array.isArray(m.images) && m.images.some(isSavedPicture) ? { images: m.images.filter(isSavedPicture).slice(0, MAX_PICTURES) } : {}) })),
   })).filter((chat: SavedChat) => chat.messages.length) } : {}
   const profile = v.profile ? { profile: parseProfile(v.profile) } : {}
   return { ...theme, ...blocker, ...chats, ...profile, review, adaptive: v.adaptive !== false, version: 1, notes: v.notes, noteName: v.noteName, count: [5,10,15].includes(v.count) ? v.count : 5, hintsOn: v.hintsOn, format: ['blank','choice','long','mixed'].includes(v.format) ? v.format : 'blank', questions: v.questions.map((q: Question) => {

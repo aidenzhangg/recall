@@ -4,7 +4,18 @@
 //  2. "device" - Chrome's built-in on-device model (no key, nothing leaves the computer).
 //  3. "none"   - no model; callers fall back to notes search and rule-based questions.
 // No key is ever written in this source code.
-export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
+/** A picture travels as a data: URL inside a user message (OpenAI-compatible "image_url" part). */
+export type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
+export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string | ContentPart[] }
+/** Vision models on Groq; the text model (gpt-oss) cannot read images. The server uses the same default. */
+export const GROQ_VISION_MODEL = 'qwen/qwen3.8-27b'
+export const MAX_IMAGES_PER_REQUEST = 3
+export const textOf = (message: ChatMessage) => typeof message.content === 'string' ? message.content : message.content.flatMap(part => part.type === 'text' ? [part.text] : []).join('\n')
+const hasImages = (messages: ChatMessage[]) => messages.some(message => typeof message.content !== 'string' && message.content.some(part => part.type === 'image_url'))
+/** Pictures need a model behind a key (Recall AI or a build's shared key); Chrome's on-device model is text only here. */
+export const imagesSupported = (engine: Engine) => engine.kind === 'key'
+// Some reasoning models write their thinking inside <think> tags; only the answer is shown.
+const withoutThinking = (text: string) => text.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').trimStart()
 export type Provider = 'groq' | 'gemini' | 'openrouter' | 'openai' | 'custom'
 export type AiSettings = { provider: Provider; model: string; key: string; baseUrl: string }
 export type Engine = { kind: 'key' | 'device' | 'none'; label: string; budget: number }
@@ -63,7 +74,7 @@ export function setCloudAi(value: CloudAi | null) { cloudAi = value }
 const cloudReady = () => !!cloudAi?.signedIn()
 
 type DeviceSession = { prompt(input: string, options?: { signal?: AbortSignal }): Promise<string>; destroy(): void }
-type DeviceApi = { availability(): Promise<string>; create(options?: { initialPrompts?: ChatMessage[] }): Promise<DeviceSession> }
+type DeviceApi = { availability(): Promise<string>; create(options?: { initialPrompts?: { role: ChatMessage['role']; content: string }[] }): Promise<DeviceSession> }
 function deviceApi(): DeviceApi | null {
   const candidate = (globalThis as { LanguageModel?: DeviceApi }).LanguageModel
   return candidate && typeof candidate.availability === 'function' ? candidate : null
@@ -106,10 +117,10 @@ async function readStream(response: Response, onText: (text: string) => void): P
       if (!line.trim().startsWith('data:') || data === '[DONE]') continue
       try {
         const piece = JSON.parse(data)?.choices?.[0]?.delta?.content
-        if (typeof piece === 'string' && piece) { text += piece; onText(text) }
+        if (typeof piece === 'string' && piece) { text += piece; const shown = withoutThinking(text); if (shown) onText(shown) }
       } catch { /* A partial or keep-alive line. */ }
     }
-    if (done) return text
+    if (done) return withoutThinking(text)
   }
 }
 function cloudFailure(status: number, error: string): string {
@@ -120,6 +131,8 @@ function cloudFailure(status: number, error: string): string {
     : /^groq_.*(?:429|rate)/i.test(error) ? 'Recall AI is busy. Wait a minute and try again.'
     : error.startsWith('groq_') ? 'Recall AI\'s model provider returned an error. Try again.'
     : status === 401 ? 'Sign in again to use Recall AI.'
+    : error === 'too_many_images' ? `Recall AI can look at up to ${MAX_IMAGES_PER_REQUEST} pictures at a time. Remove some and try again.`
+    : /^groq_/.test(error) && /image|vision|content/i.test(error) ? 'Recall AI could not read that picture. Try a smaller screenshot.'
     : status === 413 ? 'That is too much text for Recall AI at once. Try a shorter question or less material.'
     : status === 429 ? 'Recall AI is busy. Wait a minute and try again.'
     : error === 'not_configured' ? 'Recall AI is missing GROQ_API_KEY in Supabase Edge Function secrets.'
@@ -141,8 +154,9 @@ async function chatRequest(url: string, headers: Record<string, string>, body: o
     return streamed
   }
   const data = await response.json().catch(() => ({}))
-  const text = data?.choices?.[0]?.message?.content
-  if (typeof text !== 'string' || !text.trim()) throw new Error('The AI sent an empty reply. Try again.')
+  const raw = data?.choices?.[0]?.message?.content
+  const text = typeof raw === 'string' ? withoutThinking(raw) : ''
+  if (!text.trim()) throw new Error('The AI sent an empty reply. Try again.')
   return text.trim()
 }
 /** `onText`, when given, receives the reply as it is written (not for the on-device model). */
@@ -155,15 +169,18 @@ export async function complete(messages: ChatMessage[], chosen = readAiSettings(
   }
   const settings = resolve(chosen)
   if (keyReady(settings)) {
+    // On Groq the default text model cannot see pictures, so a turn with one uses the vision model.
+    const vision = hasImages(messages) && settings.provider === 'groq' && !/qwen|llama-4|vision|scout|maverick/i.test(settings.model)
     return chatRequest(`${endpoint(settings)}/chat/completions`, settings.key ? { Authorization: `Bearer ${settings.key.trim()}` } : {},
-      { model: settings.model.trim(), messages }, onText, async response => failure(response.status))
+      { model: vision ? GROQ_VISION_MODEL : settings.model.trim(), messages, ...(vision ? { reasoning_format: 'hidden' } : {}) }, onText, async response => failure(response.status))
   }
   const api = deviceApi()
   if (!api) throw new Error('No AI model is set up.')
+  if (hasImages(messages)) throw new Error('Asking about pictures needs Recall AI. Sign in to use it.')
   let session: DeviceSession | undefined
   try {
-    session = await api.create({ initialPrompts: messages.slice(0, -1) })
-    const text = (await session.prompt(messages[messages.length - 1].content, { signal: AbortSignal.timeout(90000) })).trim()
+    session = await api.create({ initialPrompts: messages.slice(0, -1).map(message => ({ role: message.role, content: textOf(message) })) })
+    const text = (await session.prompt(textOf(messages[messages.length - 1]), { signal: AbortSignal.timeout(90000) })).trim()
     if (!text) throw new Error('empty')
     return text
   } catch { throw new Error('The on-device model could not answer. Try a shorter question.') }

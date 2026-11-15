@@ -43,3 +43,7 @@ begin
 end $$;
 revoke all on function public.use_ai(integer) from public, anon;
 grant execute on function public.use_ai(integer) to authenticated;
+
+-- A cap on one account's saved progress (notes, chats and their picture previews), so one row cannot grow without limit.
+alter table public.progress drop constraint if exists progress_size;
+alter table public.progress add constraint progress_size check (octet_length(data::text) <= 8000000) not valid;

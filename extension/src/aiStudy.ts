@@ -1,6 +1,6 @@
 // Study features written by a language model from the student's notes, instead of copied sentences.
-import { complete, currentEngine } from './ai'
-import type { ChatMessage } from './ai'
+import { MAX_IMAGES_PER_REQUEST, complete, currentEngine } from './ai'
+import type { ChatMessage, ContentPart } from './ai'
 import { excerpt, parseCards, parseQuestions } from './aiParse'
 import type { AiCard } from './aiParse'
 import { studyPassages } from './quiz'
@@ -43,9 +43,10 @@ ${material}`
   return parseCards(await complete([{ role: 'system', content: 'You write accurate flashcards and reply with JSON only.' }, { role: 'user', content: prompt }]), count)
 }
 
-export type ChatTurn = { role: 'user' | 'assistant'; content: string }
+/** `images` are data: URLs of pictures the student attached to that turn. */
+export type ChatTurn = { role: 'user' | 'assistant'; content: string; images?: string[] }
 /** A real conversation: earlier turns are kept, and the notes most relevant to the latest message are attached. */
-export async function chat(input: { notes: string; history: ChatTurn[]; message: string; subject?: string; hidden?: string; quizPrompt?: string; options?: string[]; hintLevel?: number; onText?: (text: string) => void }): Promise<{ text: string; sources: string[]; label: string }> {
+export async function chat(input: { notes: string; history: ChatTurn[]; message: string; subject?: string; hidden?: string; quizPrompt?: string; options?: string[]; hintLevel?: number; images?: string[]; onText?: (text: string) => void }): Promise<{ text: string; sources: string[]; label: string }> {
   const engine = await currentEngine()
   if (engine.kind === 'none') throw new Error('No AI model is set up.')
   const passages = studyPassages(input.notes)
@@ -58,13 +59,25 @@ export async function chat(input: { notes: string; history: ChatTurn[]; message:
   ]
   const context = sources.length ? sources.join('\n') : excerpt(passages, '', Math.min(engine.budget, 3000))
   const system = [TUTOR,
+    input.images?.length ? 'The student attached a picture, usually a screenshot of their work, a question or a page. Read it carefully, including any text, equations or diagrams, and answer about what it actually shows. If part of it is unreadable, say so.' : '',
     input.subject ? `This chat is about ${input.subject.slice(0, 30)}. Answer as a ${input.subject.slice(0, 30)} tutor, and use examples from ${input.subject.slice(0, 30)}.` : '',
     context ? `The student's notes say:\n${context}\n\nPrefer these notes. If you add something that is not in them, say that it is outside their notes.` : 'The student has not added notes yet. Answer from general knowledge and say "I am not sure" rather than guessing.',
     input.quizPrompt ? `The student is working on this quiz question: "${input.quizPrompt}"${input.options?.length ? `\nOptions: ${input.options.join(' | ')}` : ''}` : '',
     input.hidden ? `The correct answer is "${input.hidden}". They must work it out themselves, so never write that answer, spell it, or give its first letter or length. Teach the idea instead.` : '',
     hinting ? `${steps[Math.min(input.hintLevel!, 2)]} Give a real hint about the meaning, never a hint about letters or word length.` : '',
   ].filter(Boolean).join('\n\n')
-  const messages: ChatMessage[] = [{ role: 'system', content: system }, ...input.history.slice(-8), { role: 'user', content: input.message.slice(0, 2000) }]
+  // The model sees at most a few pictures per request, so the newest ones are sent and older ones are mentioned instead.
+  let room = MAX_IMAGES_PER_REQUEST
+  const turn = (role: 'user' | 'assistant', text: string, images: string[] = []): ChatMessage => {
+    const kept = role === 'user' ? images.slice(0, room) : []
+    room -= kept.length
+    if (!kept.length) return { role, content: images.length ? `${text}\n(An earlier picture was here but is not attached any more.)`.trim() : text }
+    const parts: ContentPart[] = [{ type: 'text', text }, ...kept.map(url => ({ type: 'image_url' as const, image_url: { url } }))]
+    return { role, content: parts }
+  }
+  const latest = turn('user', input.message.slice(0, 2000), input.images)
+  const earlier = input.history.slice(-8).reverse().map(item => turn(item.role, item.content, item.images)).reverse()
+  const messages: ChatMessage[] = [{ role: 'system', content: system }, ...earlier, latest]
   // A reply that must hide an answer is checked before it is shown, so it is not streamed.
   const tidy = (value: string) => value.replace(/\*\*|^#+\s*/gm, '').slice(0, 4000)
   const text = tidy(await complete(messages, undefined, input.hidden || !input.onText ? undefined : value => input.onText!(tidy(value))))

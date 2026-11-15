@@ -6,15 +6,30 @@ import type { Resource } from './tutor'
 import { downloadModel, modelStatus } from './localModel'
 import type { ModelStatus } from './localModel'
 import { askCloudAi, cloudAiStatus } from './api'
-import { currentEngine } from './ai'
+import { currentEngine, imagesSupported } from './ai'
 import type { Engine } from './ai'
 import { chat } from './aiStudy'
 import type { ChatTurn } from './aiStudy'
 import Logo from './Logo'
 import { MAX_CHATS } from './account'
 import type { SavedChat } from './account'
+import { MAX_PICTURES, pictureFiles, preparePicture } from './images'
+import type { Picture } from './images'
 
-type Message = { role: 'Recall' | 'You'; text: string; sources?: string[]; resources?: Resource[]; note?: string; lookup?: boolean; hint?: boolean }
+// `images` are what is shown and sent (full size while the chat is open, previews once reopened); `thumbs` are what is saved.
+type Message = { role: 'Recall' | 'You'; text: string; sources?: string[]; resources?: Resource[]; note?: string; lookup?: boolean; hint?: boolean; images?: string[]; thumbs?: string[] }
+// Previews kept across all saved chats, newest first, so the synced history stays small (roughly 30 KB each).
+const MAX_SAVED_PICTURES = 24
+const IMAGE_ONLY = 'Help me understand this picture.'
+function limitPictures(chats: SavedChat[]): SavedChat[] {
+  let room = MAX_SAVED_PICTURES
+  return chats.map(chat => ({ ...chat, messages: [...chat.messages].reverse().map(message => {
+    if (!message.images?.length) return message
+    const kept = message.images.slice(0, Math.max(0, room)); room -= kept.length
+    if (kept.length) return { ...message, images: kept }
+    return { role: message.role, text: message.text || '(picture not kept)', ...(message.sources ? { sources: message.sources } : {}), ...(message.note ? { note: message.note } : {}), ...(message.hint ? { hint: true } : {}) }
+  }).reverse() }))
+}
 type Props = { questions: Question[]; current: number; notes: string; token?: string; subjects: string[]; chats: SavedChat[]; onChats?: (update: (chats: SavedChat[]) => SavedChat[]) => void; onSignIn: () => void }
 const newId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 function when(time: number) {
@@ -39,7 +54,13 @@ export default function HintCoach({ questions, current, notes, token, subjects, 
   const [device, setDevice] = useState<ModelStatus>('unavailable')
   const [download, setDownload] = useState(0)
   const [cloud, setCloud] = useState({ enabled: false, model: '' })
+  const [attached, setAttached] = useState<Picture[]>([])
+  const [reading, setReading] = useState(0)
+  const [pictureError, setPictureError] = useState('')
+  const [dropping, setDropping] = useState(false)
   const end = useRef<HTMLDivElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     let active = true
     void currentEngine().then(value => { if (active) { setEngine(value); setReady(true) } })
@@ -53,24 +74,49 @@ export default function HintCoach({ questions, current, notes, token, subjects, 
   // Hints stop getting stronger after the third; the answer itself is never given in chat.
   const level = Math.min(levels[selected] ?? 0, 2)
 
+  const canAttach = imagesSupported(engine)
+  const needsAccount = 'Asking about pictures needs Recall AI. Sign in to use it.'
+  async function attach(files: File[]) {
+    if (!files.length) return
+    setPictureError('')
+    if (!canAttach) { setPictureError(ready ? needsAccount : 'Recall AI is still starting. Try again in a moment.'); return }
+    const room = MAX_PICTURES - attached.length - reading
+    if (room <= 0) { setPictureError(`You can attach up to ${MAX_PICTURES} pictures per message.`); return }
+    if (files.length > room) setPictureError(`Only ${MAX_PICTURES} pictures fit in one message, so ${files.length - room} ${files.length - room === 1 ? 'was' : 'were'} left out.`)
+    const chosen = files.slice(0, room)
+    setReading(count => count + chosen.length)
+    for (const file of chosen) {
+      try {
+        const picture = await preparePicture(file)
+        setAttached(previous => previous.length < MAX_PICTURES ? [...previous, picture] : previous)
+      } catch (failure) { setPictureError(failure instanceof Error ? failure.message : 'That picture could not be added.') }
+      finally { setReading(count => count - 1) }
+    }
+    input.current?.focus()
+  }
   async function ask(text: string) {
-    const trimmed = text.trim()
-    if (!trimmed || busy) return
+    const pictures = attached
+    const trimmed = text.trim() || (pictures.length ? IMAGE_ONLY : '')
+    if (!trimmed || busy || reading) return
     const hidden = question && question.kind !== 'long' ? question.answer : undefined
     const local: Message = { role: 'Recall', ...tutorReply({ passages, message: trimmed, question, hintsOn: true, level }) }
-    const turns: ChatTurn[] = history.map(item => ({ role: item.role === 'You' ? 'user' as const : 'assistant' as const, content: item.text }))
-    const asked: Message[] = [...history, { role: 'You', text: trimmed }]
+    const turns: ChatTurn[] = history.map(item => ({ role: item.role === 'You' ? 'user' as const : 'assistant' as const, content: item.text || IMAGE_ONLY, ...(item.images?.length ? { images: item.images } : {}) }))
+    const images = pictures.map(picture => picture.url)
+    const asked: Message[] = [...history, { role: 'You', text: text.trim(), ...(pictures.length ? { images, thumbs: pictures.map(picture => picture.thumb) } : {}) }]
     setHistory(asked)
-    setMessage('')
+    setMessage(''); setAttached([]); setPictureError('')
     let reply = local
+    // A picture always goes to the model, since the notes search cannot read it.
+    if (images.length && !canAttach) reply = { role: 'Recall', text: needsAccount }
     // With a model on, hints and explanations are written by it; the answer to a quiz question is never sent back.
-    if ((local.lookup || local.hint) && (engine.kind !== 'none' || (cloudOn && local.lookup))) {
+    else if (images.length || ((local.lookup || local.hint) && (engine.kind !== 'none' || (cloudOn && local.lookup)))) {
       setBusy(true); setDraft('')
       try {
         if (engine.kind !== 'none') {
-          const written = await chat({ notes, history: turns, message: trimmed, subject: subject || undefined, hidden, quizPrompt: question?.prompt, options: question?.options, hintLevel: local.hint ? level : undefined, onText: setDraft })
+          const written = await chat({ notes, history: turns, message: trimmed, subject: subject || undefined, hidden, quizPrompt: question?.prompt, options: question?.options, hintLevel: local.hint ? level : undefined, images, onText: setDraft })
           reply = local.hint
             ? { role: 'Recall', text: written.text, hint: true, note: `Hint ${level + 1} of 3` }
+            : images.length && !written.sources.length ? { role: 'Recall', text: written.text }
             : { role: 'Recall', text: written.text, sources: written.sources, note: written.sources.length ? 'Based on the note lines below' : 'Not from your notes, so check it against a source', resources: written.sources.length ? [] : local.resources }
         } else if (token) {
           const written = await askCloudAi(token, { message: trimmed, sources: local.sources ?? [], hidden })
@@ -78,7 +124,8 @@ export default function HintCoach({ questions, current, notes, token, subjects, 
         }
       } catch (failure) {
         const reason = failure instanceof Error ? failure.message : ''
-        if (reason && reason !== 'leak') reply = { ...local, note: `${reason} Showing your notes instead.` }
+        if (reason && reason !== 'leak' && images.length) reply = { role: 'Recall', text: reason }
+        else if (reason && reason !== 'leak') reply = { ...local, note: `${reason} Showing your notes instead.` }
         else if (reason === 'leak' && !local.hint && question) reply = { role: 'Recall', ...tutorReply({ passages, message: 'hint', question, hintsOn: true, level }) }
       }
       setBusy(false); setDraft('')
@@ -89,12 +136,15 @@ export default function HintCoach({ questions, current, notes, token, subjects, 
     // Saved to the account only; signed out, nothing is stored.
     onChats?.(previous => {
       const old = previous.find(chat => chat.id === chatId)
-      const title = old?.title ?? (question ? `Q${selected + 1}: ${question.prompt}` : trimmed).slice(0, 120)
-      const messages = final.slice(-80).map(({ role, text, sources, note, hint }) => ({ role, text, ...(sources ? { sources } : {}), ...(note ? { note } : {}), ...(hint ? { hint } : {}) }))
-      return [{ id: chatId, title, updated: Date.now(), ...(subject ? { subject } : {}), messages }, ...previous.filter(chat => chat.id !== chatId)].slice(0, MAX_CHATS)
+      const title = old?.title ?? (question ? `Q${selected + 1}: ${question.prompt}` : text.trim() || 'Question about a picture').slice(0, 120)
+      const messages = final.slice(-80).map(({ role, text, sources, note, hint, images, thumbs }) => {
+        const saved = thumbs ?? images
+        return { role, text, ...(sources ? { sources } : {}), ...(note ? { note } : {}), ...(hint ? { hint } : {}), ...(saved?.length ? { images: saved } : {}) }
+      })
+      return limitPictures([{ id: chatId, title, updated: Date.now(), ...(subject ? { subject } : {}), messages }, ...previous.filter(chat => chat.id !== chatId)].slice(0, MAX_CHATS))
     })
   }
-  function newChat() { setHistory([]); setLevels({}); setChatId(newId()); setView('chat') }
+  function newChat() { setHistory([]); setLevels({}); setChatId(newId()); setView('chat'); setAttached([]); setPictureError('') }
   function openChat(chat: SavedChat) { setHistory(chat.messages); setLevels({}); setChatId(chat.id); setSelected(-1); setSubject(chat.subject ?? ''); setView('chat') }
   // Switching subject starts a fresh chat in it; the one you were in is already saved.
   function pickSubject(next: string) { if (next === subject) return; setSubject(next); if (view === 'chat') { setHistory([]); setLevels({}); setChatId(newId()) } }
@@ -140,7 +190,9 @@ export default function HintCoach({ questions, current, notes, token, subjects, 
           {device === 'downloadable' && <button type="button" className="secondary" onClick={() => void enableDevice()}>Turn on Chrome's built-in AI</button>}
           {device === 'downloading' && <p>Downloading{download ? ` ${download}%` : ''}...</p>}</>}
       </div>}
-      {history.map((item, i) => <div className={`coach-message ${item.role === 'You' ? 'coach-message--you' : ''}`} key={i}>{item.role === 'Recall' && <strong>Recall</strong>}<p>{item.text}</p>
+      {history.map((item, i) => <div className={`coach-message ${item.role === 'You' ? 'coach-message--you' : ''}`} key={i}>{item.role === 'Recall' && <strong>Recall</strong>}
+        {!!item.images?.length && <div className="coach-pictures">{item.images.map((url, n) => <img key={n} src={url} alt={`Picture ${n + 1} you sent`} />)}</div>}
+        {item.text && <p>{item.text}</p>}
         {item.sources?.map((source, n) => <blockquote key={n}>{source}</blockquote>)}
         {item.note && <p className="coach-note">{item.note}</p>}
         {!!item.resources?.length && <div className="chips"><span>Look it up</span>{item.resources.map(link => <a key={link.label} className="chip" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>)}</div>}
@@ -149,7 +201,20 @@ export default function HintCoach({ questions, current, notes, token, subjects, 
       <div ref={end} />
     </div>
     {suggestions.length > 0 && <div className="chips suggestions" aria-label="Suggested questions">{suggestions.map(text => <button key={text} type="button" className="chip" disabled={busy} onClick={() => void ask(text)}>{text}</button>)}</div>}
-    <form className="coach-form" onSubmit={e => { e.preventDefault(); void ask(message) }}><label className="visually-hidden" htmlFor="hint-message">Your message</label><textarea id="hint-message" rows={1} maxLength={2000} value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(message) } }} placeholder={question ? 'Say where you are stuck' : 'Ask Recall AI'} /><button className="send" aria-label="Send" disabled={!message.trim() || busy}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg></button></form>
+    {(attached.length > 0 || reading > 0) && <ul className="coach-attachments" aria-label="Pictures to send">
+      {attached.map((picture, n) => <li key={picture.id}><img src={picture.thumb} alt={`Attached picture ${n + 1}`} /><button type="button" className="coach-attachment-remove" aria-label={`Remove picture ${n + 1}`} title="Remove" onClick={() => setAttached(previous => previous.filter(item => item.id !== picture.id))}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button></li>)}
+      {Array.from({ length: reading }, (_, n) => <li key={`reading-${n}`} className="coach-attachment-loading" aria-label="Adding picture" />)}
+    </ul>}
+    {pictureError && <p className="coach-note coach-picture-error" role="alert">{pictureError}</p>}
+    <form className={`coach-form${dropping ? ' coach-form--drop' : ''}`} onSubmit={e => { e.preventDefault(); void ask(message) }}
+      onDragOver={e => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); setDropping(true) } }}
+      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false) }}
+      onDrop={e => { setDropping(false); if (!e.dataTransfer.files.length) return; e.preventDefault(); const files = pictureFiles(e.dataTransfer); if (files.length) void attach(files); else setPictureError('Only pictures can be added here.') }}>
+      <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={e => { void attach([...(e.target.files ?? [])]); e.target.value = '' }} />
+      <button type="button" className="ghost coach-attach" aria-label="Attach a picture" title={canAttach ? 'Attach a picture, or paste a screenshot with Ctrl+V' : 'Sign in to ask Recall AI about pictures'} disabled={busy || attached.length + reading >= MAX_PICTURES} onClick={() => { if (canAttach) picker.current?.click(); else setPictureError(needsAccount) }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 8" /></svg></button>
+      <label className="visually-hidden" htmlFor="hint-message">Your message</label><textarea ref={input} id="hint-message" rows={1} maxLength={2000} value={message} onChange={e => setMessage(e.target.value)}
+        onPaste={e => { const files = pictureFiles(e.clipboardData); if (files.length) { e.preventDefault(); void attach(files) } }}
+        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(message) } }} placeholder={attached.length ? 'Ask about the picture' : question ? 'Say where you are stuck' : canAttach ? 'Ask Recall AI, or paste a screenshot' : 'Ask Recall AI'} /><button className="send" aria-label="Send" disabled={(!message.trim() && !attached.length) || busy || reading > 0}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg></button></form>
     {!onChats && history.length > 0 && <p className="coach-note chat-unsaved">Not saved. <button type="button" className="text-button" onClick={onSignIn}>Sign in</button> to keep your chats.</p>}
     </>}
   </aside>
