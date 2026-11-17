@@ -29,7 +29,8 @@ test('turning blocking on installs only main-frame domain rules and preserves un
  const rule=mock.rules().find(r=>r.id===10000)
  assert.equal(rule.action.type,'block')
  assert.deepEqual(rule.condition.requestDomains,['example.com'])
- assert.deepEqual(rule.condition.resourceTypes,['main_frame'])
+ // Every request type, so a site's service worker and its API calls are blocked too, not only the page.
+ for(const type of ['main_frame','sub_frame','xmlhttprequest','script','media','other']) assert.ok(rule.condition.resourceTypes.includes(type),type)
  assert.ok(mock.rules().some(r=>r.id===42))
  await blocker.set({enabled:false,domains:['example.com']})
  assert.deepEqual(mock.rules().map(r=>r.id),[42])

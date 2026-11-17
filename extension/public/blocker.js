@@ -15,9 +15,14 @@ export function normalizeDomain(value) {
   return host;
 }
 
+// Every request type, not only the page itself. Sites like YouTube install a service worker that answers
+// page loads from its own cache, so a main_frame-only rule never sees them; blocking the worker's own
+// requests and the page's API calls is what stops an already-visited site from loading.
+const ALL_TYPES = ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object', 'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket', 'webtransport', 'webbundle', 'other'];
+
 export function buildBlockRules(state) {
   if (!state.enabled) return [];
-  return state.domains.map((domain, i) => ({ id: FIRST_RULE + i, priority: 1, action: { type: 'block' }, condition: { requestDomains: [domain], resourceTypes: ['main_frame'] } }));
+  return state.domains.map((domain, i) => ({ id: FIRST_RULE + i, priority: 1, action: { type: 'block' }, condition: { requestDomains: [domain], resourceTypes: ALL_TYPES } }));
 }
 
 function storedState(value) {
