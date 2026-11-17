@@ -6,9 +6,44 @@ A Chrome side-panel study app. It turns your own notes into quizzes, flashcards 
 
 ![Recall's practice, sign-in and focus timer screens](docs/screenshots/recall-cover.jpg)
 
+## About
+
+Recall lives in Chrome's side panel, next to whatever you are studying. You paste notes or import a PDF, and Recall turns them into practice: quizzes in 4 formats, flashcards, a new practice paper in the same layout as a past paper, or a problem set of 5 to 20 worked problems. Every answer is marked straight away, only first tries count, and the topics you miss come back first.
+
+Recall AI is a tutor that works from your notes. It answers questions, explains ideas in plain words, reads screenshots you paste in, and shows which lines of your notes it used. During a quiz it switches to hints only: three steps that get closer each time, and any reply that would give the answer away is thrown out.
+
+To help you stay on task, a 15 to 60 minute focus timer locks the site blocker on for the length of the session. An optional webcam check uses MediaPipe Face Landmarker in the browser to tell whether you are looking at the screen, and pauses the timer when you are not.
+
+Everything is saved to your account through Supabase, never to the device. The AI key stays on the server behind a Supabase Edge Function, so it is never inside the extension.
+
+## At a glance
+
+| | |
+| --- | --- |
+| Study modes | 4 question types (multiple choice, fill in the blank, long answer, mixed), flashcards, practice papers, problem sets |
+| Imports | PDF, TXT and Markdown up to 20 MB, read in the browser with pdf.js |
+| Recall AI | Groq `gpt-oss-120b` for text, a vision model for pictures (up to 3 per message), 200 requests per user per day |
+| Hints | 3 levels per question, and replies that reveal the answer are rejected |
+| Focus timer | 15, 25, 45 or 60 minutes, with the site blocker locked on until it ends |
+| Camera focus | 478 face landmarks reduced to head yaw, head pitch and blink, giving 4 states. Pauses after 15 s to 2 min away and resumes after 2 s back |
+| Site blocker | Up to 100 domains and their subdomains, blocking all 15 request types |
+| Security | Row-level security on every table, parameterized SQL, PBKDF2 with 210,000 iterations, lockout after 8 failed sign-ins |
+| Tests | 60 Node tests and 36 JUnit tests, run by GitHub Actions on every push |
+
 ## Why
 
 Getting an AI answer straight away can feel like understanding without actually testing what you remember. Recall keeps practice, hints and review next to your material, so you still do the thinking.
+
+## How camera focus works
+
+1. MediaPipe Face Landmarker finds 478 points on your face in each webcam frame, all on your computer.
+2. Recall turns them into three numbers: head turn (yaw), head tilt (pitch) and an eye-blink score.
+3. The first few seconds set your own baseline, so a webcam off to one side still works.
+4. A yaw shift over 0.2 or a pitch shift over 0.24 means looking away, and a blink score over 0.6 means eyes closed. No face found means you left.
+5. More than 2 seconds away counts as a look-away. At your chosen timeout it chimes and pauses, and 2 seconds back on screen resumes it.
+6. The panel shows screen attention (time on screen ÷ time tracked), look-aways, your best streak and a strip of the last minute.
+
+Frames are never saved or sent, and nothing identifies who you are.
 
 ## Screens
 
