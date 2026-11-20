@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { accountRequest, googleSignIn, parseProgress } from './account'
-import type { Account, SavedProgress, UserProfile } from './account'
+import { PASSWORD_RESET, RESET_SENT, accountRequest, finishPasswordReset, googleSignIn, parseProgress, requestPasswordReset, verifyResetCode } from './account'
+import type { Account, Recovery, SavedProgress, UserProfile } from './account'
 import ProfileCard from './ProfileCard'
 import type { ProfileStats } from './ProfileCard'
 import Logo from './Logo'
 
+/** Forgot password: ask for the email, then the emailed code, then a new password. */
+type Reset = { step: 'email' } | { step: 'code' } | { step: 'password'; recovery: Recovery }
+const RESEND_WAIT = 60000
 type Props = { required?: boolean; account: Account | null; syncStatus: string; onAuthenticated: (account: Account, progress: SavedProgress | null) => void; onSave: () => Promise<void>; onSignOut: () => Promise<void>; profile: UserProfile; onProfile: (profile: UserProfile) => void; stats: ProfileStats; onGuest?: () => void }
 export default function Profile({ required = false, account, syncStatus, onAuthenticated, onSave, onSignOut, profile, onProfile, stats, onGuest }: Props) {
   const [create, setCreate] = useState(false)
@@ -15,6 +18,37 @@ export default function Profile({ required = false, account, syncStatus, onAuthe
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [reset, setReset] = useState<Reset | null>(null)
+  const [code, setCode] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [resendReady, setResendReady] = useState(true)
+  useEffect(() => { if (resendReady) return; const timer = setTimeout(() => setResendReady(true), RESEND_WAIT); return () => clearTimeout(timer) }, [resendReady])
+  function startReset() { setReset({ step: 'email' }); setError(''); setPassword(''); setCode(''); setConfirm('') }
+  function leaveReset() { setReset(null); setError(''); setPassword(''); setCode(''); setConfirm('') }
+  async function sendCode(event?: FormEvent) {
+    event?.preventDefault(); setBusy(true); setError('')
+    try { await requestPasswordReset(email.trim()); setReset({ step: 'code' }); setCode(''); setResendReady(false) }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not send the code. Try again.') }
+    finally { setBusy(false) }
+  }
+  async function checkCode(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError('')
+    try { const recovery = await verifyResetCode(email.trim(), code); setReset({ step: 'password', recovery }); setPassword(''); setConfirm('') }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not check the code. Try again.') }
+    finally { setBusy(false) }
+  }
+  async function savePassword(event: FormEvent) {
+    event.preventDefault()
+    if (reset?.step !== 'password') return
+    if (password !== confirm) { setError('The two passwords do not match.'); return }
+    setBusy(true); setError('')
+    try {
+      const data = await finishPasswordReset(reset.recovery, password)
+      onAuthenticated({ token: data.token, user: data.user }, reauth && account?.user.id === data.user.id ? null : data.progress ? parseProgress(data.progress) : null)
+      setReauth(false); leaveReset()
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not save the new password. Try again.') }
+    finally { setBusy(false) }
+  }
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError('')
     try {
@@ -38,6 +72,31 @@ export default function Profile({ required = false, account, syncStatus, onAuthe
   const signedIn = account && !reauth
   return <section className={signedIn ? 'auth auth--profile' : 'auth'} aria-labelledby="profile-title">
     {signedIn ? <ProfileCard account={account} profile={profile} stats={stats} syncStatus={syncStatus} busy={busy} onProfile={onProfile} onSave={() => void action(onSave)} onSignOut={() => void action(onSignOut)} />
+    : reset ? <div className="auth-card">
+      <Logo className="brand-mark auth-mark" />
+      <div className="auth-heading"><h2 id="profile-title">{reset.step === 'email' ? 'Reset your password' : reset.step === 'code' ? 'Check your email' : 'Choose a new password'}</h2>
+        <p>{reset.step === 'email' ? "Enter your account's email and we'll send you a code." : reset.step === 'code' ? `Enter the code sent to ${email.trim()}.` : `For ${reset.recovery.user.email || email.trim()}. You'll be signed in when it's saved.`}</p></div>
+      {reset.step === 'email' && <form className="profile-form" onSubmit={e => void sendCode(e)}>
+        <label>Email<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required maxLength={254} disabled={busy} autoFocus /></label>
+        {error && <p className="error" role="alert">{error}</p>}
+        <button className="primary" disabled={busy}>{busy ? 'Please wait...' : 'Send code'}</button>
+      </form>}
+      {reset.step === 'code' && <form className="profile-form" onSubmit={e => void checkCode(e)}>
+        <p className="reset-notice" role="status">{RESET_SENT}</p>
+        <label>Code<input value={code} onChange={e => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" required maxLength={14} disabled={busy} autoFocus placeholder="Code from the email" /></label>
+        {error && <p className="error" role="alert">{error}</p>}
+        <button className="primary" disabled={busy}>{busy ? 'Please wait...' : 'Continue'}</button>
+        <p className="auth-switch">Nothing yet? <button type="button" className="text-button" disabled={busy || !resendReady} onClick={() => void sendCode()}>{resendReady ? 'Send a new code' : 'Send a new code in a minute'}</button></p>
+      </form>}
+      {reset.step === 'password' && <form className="profile-form" onSubmit={e => void savePassword(e)}>
+        <input type="email" value={reset.recovery.user.email || email.trim()} autoComplete="username" readOnly hidden />
+        <label>New password<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" required minLength={10} maxLength={128} disabled={busy} autoFocus placeholder="At least 10 characters" /></label>
+        <label>Confirm new password<input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" required minLength={10} maxLength={128} disabled={busy} /></label>
+        {error && <p className="error" role="alert">{error}</p>}
+        <button className="primary" disabled={busy}>{busy ? 'Please wait...' : 'Save and sign in'}</button>
+      </form>}
+      <p className="auth-switch">Remembered it? <button type="button" className="text-button" disabled={busy} onClick={leaveReset}>Back to sign in</button></p>
+    </div>
     : <div className="auth-card">
       <Logo className="brand-mark auth-mark" />
       <div className="auth-heading"><h2 id="profile-title">{create ? 'Create your account' : 'Welcome back'}</h2><p>{create ? 'Keep your notes and progress on every computer.' : required ? 'Sign in to open your notes and progress.' : 'Sign in to sync your notes and progress.'}</p></div>
@@ -47,6 +106,7 @@ export default function Profile({ required = false, account, syncStatus, onAuthe
         {create && <label>Name<input value={name} onChange={e => setName(e.target.value)} autoComplete="name" required maxLength={80} disabled={busy} /></label>}
         <label>Email<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required maxLength={254} disabled={busy} /></label>
         <label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete={create ? 'new-password' : 'current-password'} required minLength={create ? 10 : 1} maxLength={128} disabled={busy} placeholder={create ? 'At least 10 characters' : ''} /></label>
+        {!create && PASSWORD_RESET && <button type="button" className="text-button forgot-link" disabled={busy} onClick={startReset}>Forgot password?</button>}
         {error && <p className="error" role="alert">{error}</p>}
         <button className="primary" disabled={busy}>{busy ? 'Please wait...' : create ? 'Create account' : 'Sign in'}</button>
       </form>

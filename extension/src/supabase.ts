@@ -5,6 +5,8 @@ export type CloudConfig = { url: string; key: string }
 export type CloudUser = { id: string; name: string; email: string }
 export type CloudResult = { token: string; user: CloudUser; progress?: string | null }
 type Session = { access: string; refresh: string; expiresAt: number; user: CloudUser }
+/** A signed-in session that has only proved the person can read the account's email. It is kept in memory, never stored, until a new password is set. */
+export type Recovery = Session
 type Store = { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }
 const SESSION = 'recall-account-session'
 
@@ -19,6 +21,12 @@ function userOf(raw: { id?: unknown; email?: unknown; user_metadata?: Record<str
   const name = [meta.name, meta.full_name].find(value => typeof value === 'string' && value.trim()) as string | undefined
   return { id: String(raw?.id ?? ''), email, name: (name ?? email.split('@')[0] ?? 'Student').trim().slice(0, 80) || 'Student' }
 }
+/** The code from a password-reset email, with spaces and dashes removed, or null if it is not 6 to 10 digits. */
+export function recoveryCode(input: string): string | null {
+  const code = input.replace(/[\s-]/g, '')
+  return /^\d{6,10}$/.test(code) ? code : null
+}
+type CloudError = Error & { status?: number; code?: string }
 function explain(status: number, data: { error_code?: string; msg?: string; message?: string; error_description?: string; code?: string }): string {
   const code = data.error_code ?? data.code ?? ''
   const text = data.msg ?? data.error_description ?? data.message ?? ''
@@ -26,6 +34,8 @@ function explain(status: number, data: { error_code?: string; msg?: string; mess
   if (code === 'email_not_confirmed') return 'Confirm your email first: open the link Supabase sent you, then sign in.'
   if (code === 'user_already_exists' || /already registered/i.test(text)) return 'An account already exists for this email. Sign in instead.'
   if (code === 'weak_password') return 'Choose a longer password, at least 10 characters.'
+  if (code === 'otp_expired' || /token has expired or is invalid/i.test(text)) return 'That code is wrong or has expired. Check the newest email, or send a new code.'
+  if (code === 'same_password') return 'Choose a password that is different from your old one.'
   if (code === 'PGRST205' || code === '42P01' || /could not find the table|does not exist/i.test(text)) return 'The progress table is missing. Run supabase/schema.sql in your Supabase project (SQL Editor).'
   if (status === 429) return 'Too many attempts. Wait a few minutes and try again.'
   if (status === 401 || status === 403) return 'Please sign in again.'
@@ -46,7 +56,7 @@ export function createCloud(config: CloudConfig, store: Store = localStorage, no
       throw new Error('Cannot reach the account service. Check your internet connection.', { cause: failure })
     }
     const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(explain(response.status, data))
+    if (!response.ok) throw Object.assign(new Error(explain(response.status, data)), { status: response.status, code: data.error_code ?? data.code ?? '' }) as CloudError
     return data
   }
   function open(data: { access_token?: string; refresh_token?: string; expires_in?: number; user?: object }, user?: CloudUser): Session {
@@ -85,6 +95,38 @@ export function createCloud(config: CloudConfig, store: Store = localStorage, no
       if (!access || !refresh) throw new Error(params.get('error_description') ?? 'Google did not return a sign-in. Try again.')
       const user = userOf(await call('/auth/v1/user', { token: access }))
       return result(open({ access_token: access, refresh_token: refresh, expires_in: Number(params.get('expires_in')) || 3600 }, user))
+    },
+    /**
+     * Asks Supabase to email a password-reset code. It resolves the same way whether or not the email has an account, so
+     * the screen never reveals who is registered. Supabase answers 429 when that address was sent a code in the last minute
+     * (it only says so for real accounts), so a 429 is treated like success too.
+     */
+    async requestReset(email: string): Promise<void> {
+      try { await call('/auth/v1/recover', { body: { email } }) }
+      catch (failure) { if ((failure as CloudError).status !== 429) throw failure }
+    },
+    /** Checks the emailed code. The returned recovery session is not saved: closing Recall before a new password is set signs nobody in. */
+    async verifyReset(email: string, code: string): Promise<Recovery> {
+      const token = recoveryCode(code)
+      if (!token) throw new Error('Enter the code from the email: 6 to 10 digits.')
+      const data = await call('/auth/v1/verify', { body: { type: 'recovery', email, token } })
+      if (!data.access_token || !data.refresh_token) throw new Error('The account service did not return a session. Try again.')
+      return { access: data.access_token, refresh: data.refresh_token, expiresAt: now() + (data.expires_in ?? 3600) * 1000, user: userOf(data.user) }
+    },
+    /** Sets the new password with the recovery session, then signs the person in. */
+    async finishReset(recovery: Recovery, password: string): Promise<CloudResult> {
+      if (password.length < 10) throw new Error('Choose a longer password, at least 10 characters.')
+      if (recovery.expiresAt <= now()) throw new Error('This reset has expired. Send a new code and try again.')
+      let updated
+      try { updated = await call('/auth/v1/user', { method: 'PUT', token: recovery.access, body: { password } }) }
+      catch (failure) {
+        const status = (failure as CloudError).status
+        if (status === 401 || status === 403) throw new Error('This reset has expired. Send a new code and try again.', { cause: failure })
+        throw failure
+      }
+      const session = { ...recovery, user: updated?.id ? userOf(updated) : recovery.user }
+      write(session)
+      return result(session)
     },
     googleUrl: (redirect: string) => `${config.url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirect)}`,
     async me(): Promise<CloudResult> { return result(await fresh()) },

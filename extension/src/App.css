@@ -348,6 +348,8 @@ button.flashcard:hover { border-color: var(--line-strong); transform: translateY
 .auth-card .profile-sync, .auth-card > .muted, .auth-switch { text-align: center; }
 .auth-switch { color: var(--muted); font-size: 12.5px; }
 .auth-switch .text-button { min-height: 0; padding: 0; }
+.forgot-link { justify-self: end; min-height: 0; margin-top: -8px; padding: 0; }
+.reset-notice { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
 /* ---------- Profile ---------- */
 .auth--profile { justify-items: stretch; padding-top: 0; }
 .profile-page { display: grid; gap: 14px; width: 100%; max-width: 680px; margin: 0 auto; }

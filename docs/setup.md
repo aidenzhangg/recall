@@ -38,6 +38,23 @@ With this on, sign-in is the first screen, people stay signed in between session
 
 The Project URL and anon key are meant to be public; row-level security is what protects the data. **Never** use the `service_role` or secret key in the extension: it bypasses that security. As the project owner you can read stored notes in the Supabase dashboard, so tell your users.
 
+**Forgot password?** on the sign-in screen emails a one-time code. The person types it into Recall, picks a new password and is signed in. It needs one change in Supabase, because the default email sends only a link:
+
+1. Set up custom SMTP first (step 4 below): Supabase only lets you edit email templates once your own SMTP is on, and the default template has no code in it. Then open **Authentication**, then **Emails** (Email Templates), then **Reset Password**.
+2. Replace the body with something like the text below and save. `{{ .Token }}` is the code; leave out `{{ .ConfirmationURL }}`, since the link cannot open inside the extension.
+
+   ```html
+   <h2>Reset your Recall password</h2>
+   <p>Enter this code in Recall: <strong>{{ .Token }}</strong></p>
+   <p>It expires in one hour. If you did not ask for it, ignore this email.</p>
+   ```
+3. Optional: under **Authentication**, then **Sign In / Providers**, then **Email**, **Email OTP Expiration** sets how long the code works (3600 seconds by default) and **Email OTP Length** its length (6 by default; Recall accepts 6 to 10 digits). There is nothing else to enable: reset codes work as long as the Email provider is on.
+4. Supabase's built-in email service sends only a few emails an hour for the whole project. For real users, set up your own SMTP under **Authentication**, then **Emails**, then **SMTP Settings**, and raise the limit under **Authentication**, then **Rate Limits**.
+
+No redirect URL is needed for this. Recall uses a typed code rather than a link because an emailed link opens in an ordinary browser tab (or on a phone), where the extension cannot pick up the sign-in; the Google redirect only works because Recall opens and watches that window itself. Whether or not an email has an account, Recall shows the same "If an account exists" message, and it treats Supabase's "wait a minute before asking again" reply the same way, so the screen never reveals who is registered.
+
+Password reset is only offered with Supabase accounts. The optional Java backend's own email and password accounts cannot reset a password: the backend has no way to send email, so there is nothing that proves the person owns the address. Signing in with Google, or asking whoever runs the backend, are the only ways back into such an account.
+
 **Continue with Google** in this mode needs two more steps in Supabase: enable the Google provider under Authentication (it asks for a Google OAuth client ID and secret, which stay in Supabase), and add `https://<your-extension-id>.chromiumapp.org/` under Authentication, URL Configuration, Redirect URLs. Recall Connect (phone photos) still needs the Java backend.
 
 ## Recall AI without a key in the extension (Supabase Edge Function)

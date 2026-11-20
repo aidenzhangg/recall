@@ -1,6 +1,7 @@
 import type { Question, QuizFormat, ReviewItem } from './quiz'
 import { API_BASE } from './api'
 import { cloudConfig, createCloud } from './supabase'
+import type { Recovery } from './supabase'
 import { setCloudAi } from './ai'
 import { MAX_PICTURES, isSavedPicture } from './images'
 // With a Supabase project configured, accounts live there and nothing is saved to this device.
@@ -89,6 +90,16 @@ export async function accountRequest(path: string, body?: unknown, token?: strin
   if (!response.ok) throw new Error(response.status === 400 ? 'Check your details. New passwords need at least 10 characters.' : data.message ?? data.detail ?? (response.status === 401 ? 'Please sign in again.' : response.status === 409 ? 'An account already exists for this email.' : response.status === 429 ? 'Too many attempts. Please wait five minutes.' : 'Account storage is unavailable. Try again.'))
   return data
 }
+// Password reset needs a service that can send email. Supabase Auth has one; the optional Java backend does not, so
+// there the sign-in screen offers no reset.
+export const PASSWORD_RESET = !!cloud
+/** Shown whether or not the email has an account, so the screen never reveals who is registered. */
+export const RESET_SENT = "If an account exists for that email, we've sent it a code. It can take a minute to arrive, so check spam too."
+export type { Recovery }
+const NO_RESET = 'Password reset needs Supabase accounts. The Recall backend cannot send email.'
+export async function requestPasswordReset(email: string) { if (!cloud) throw new Error(NO_RESET); return cloud.requestReset(email) }
+export async function verifyResetCode(email: string, code: string) { if (!cloud) throw new Error(NO_RESET); return cloud.verifyReset(email, code) }
+export async function finishPasswordReset(recovery: Recovery, password: string) { if (!cloud) throw new Error(NO_RESET); return cloud.finishReset(recovery, password) }
 const NOT_INSTALLED = 'Google sign-in works in the installed Chrome extension. Reload Recall at chrome://extensions and try again.'
 /** Opens a small, centred sign-in window and resolves with the address it was sent back to, or null if it was closed first. */
 async function authWindow(url: string): Promise<string | null> {
